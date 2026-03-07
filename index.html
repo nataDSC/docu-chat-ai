@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Upload to n8n</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="card" aria-labelledby="upload-title">
+        <header class="card-header">
+          <p class="badge">n8n Webhook Upload</p>
+          <h1 id="upload-title">Upload your file</h1>
+          <p class="subtitle">
+            Accepted formats: <strong>.txt</strong>, <strong>.pdf</strong>,
+            <strong>.csv</strong>
+          </p>
+        </header>
+
+        <form id="upload-form" class="upload-form" novalidate>
+          <label for="file-input" class="dropzone" id="dropzone">
+            <input
+              id="file-input"
+              name="file"
+              type="file"
+              accept=".txt,.pdf,.csv,text/plain,application/pdf,text/csv"
+              required
+            />
+            <div class="dropzone-copy">
+              <p class="dropzone-title">Drag & drop a file here</p>
+              <p class="dropzone-hint">or click to browse from your device</p>
+            </div>
+          </label>
+
+          <div class="selected-file" id="selected-file" aria-live="polite">
+            No file selected
+          </div>
+
+          <button type="submit" id="submit-btn" class="submit-btn" disabled>
+            Upload to n8n
+          </button>
+        </form>
+
+        <section class="debug-panel" aria-labelledby="request-preview-title">
+          <h2 id="request-preview-title">Request preview</h2>
+          <p id="multipart-keys" class="multipart-keys">Multipart keys: file</p>
+          <button type="button" id="copy-payload-btn" class="copy-btn">
+            Copy payload JSON
+          </button>
+          <pre id="payload-preview" class="payload-preview">
+Select a file to preview metadata payload.</pre
+          >
+        </section>
+
+        <div id="status" class="status" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
