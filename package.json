@@ -1,0 +1,13 @@
+{
+  "name": "docuchat-ai",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start:billing": "node billing-server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "dotenv": "^16.4.5",
+    "stripe": "^18.3.0"
+  }
+}
