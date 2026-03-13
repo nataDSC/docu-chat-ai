@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Upload to n8n</title>
+    <title>DocuChat AI</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -14,55 +14,254 @@
   </head>
   <body>
     <main class="app-shell">
-      <section class="card" aria-labelledby="upload-title">
-        <header class="card-header">
-          <p class="badge">n8n Webhook Upload</p>
-          <h1 id="upload-title">Upload your file</h1>
-          <p class="subtitle">
-            Accepted formats: <strong>.txt</strong>, <strong>.pdf</strong>,
-            <strong>.csv</strong>
-          </p>
-        </header>
-
-        <form id="upload-form" class="upload-form" novalidate>
-          <label for="file-input" class="dropzone" id="dropzone">
-            <input
-              id="file-input"
-              name="file"
-              type="file"
-              accept=".txt,.pdf,.csv,text/plain,application/pdf,text/csv"
-              required
-            />
-            <div class="dropzone-copy">
-              <p class="dropzone-title">Drag & drop a file here</p>
-              <p class="dropzone-hint">or click to browse from your device</p>
-            </div>
-          </label>
-
-          <div class="selected-file" id="selected-file" aria-live="polite">
-            No file selected
+      <section class="card app-card" aria-labelledby="app-title">
+        <header class="card-header app-header">
+          <div>
+            <p class="badge">Workspace</p>
+            <h1 id="app-title">DocuChat AI</h1>
+            <p class="subtitle">
+              Upload docs, chat with workflow responses, and extract video
+              transcripts.
+            </p>
           </div>
 
-          <button type="submit" id="submit-btn" class="submit-btn" disabled>
-            Upload to n8n
-          </button>
-        </form>
+          <div class="account-cluster" aria-live="polite">
+            <span id="user-name" class="user-name">loading...</span>
+            <span id="tier-badge" class="tier-badge tier-badge--free"
+              >Free</span
+            >
+            <span id="tier-usage" class="tier-usage"
+              >Uploads 0/3 • Transcripts 0/3</span
+            >
+            <button type="button" id="reset-usage-btn" class="reset-usage-btn">
+              Reset usage
+            </button>
+            <button type="button" id="logout-btn" class="logout-btn">
+              Log out
+            </button>
+          </div>
+        </header>
 
-        <section class="debug-panel" aria-labelledby="request-preview-title">
-          <h2 id="request-preview-title">Request preview</h2>
-          <p id="multipart-keys" class="multipart-keys">Multipart keys: file</p>
-          <button type="button" id="copy-payload-btn" class="copy-btn">
-            Copy payload JSON
+        <nav class="tab-nav" aria-label="Main navigation tabs">
+          <button type="button" class="tab-btn is-active" data-tab="uploads">
+            Uploads
           </button>
-          <pre id="payload-preview" class="payload-preview">
+          <button type="button" class="tab-btn" data-tab="chat">Chat</button>
+          <button type="button" class="tab-btn" data-tab="transcripts">
+            Transcripts
+          </button>
+          <button type="button" class="tab-btn" data-tab="history">
+            History
+          </button>
+        </nav>
+
+        <section
+          id="tab-uploads"
+          class="tab-panel is-active"
+          aria-labelledby="tab-title-uploads"
+        >
+          <h2 id="tab-title-uploads" class="panel-title">Upload Documents</h2>
+          <form id="upload-form" class="upload-form" novalidate>
+            <label for="file-input" class="dropzone" id="dropzone">
+              <input
+                id="file-input"
+                name="file"
+                type="file"
+                accept=".txt,.pdf,.csv,text/plain,application/pdf,text/csv"
+                required
+              />
+              <div class="dropzone-copy">
+                <p class="dropzone-title">Drag & drop a file here</p>
+                <p class="dropzone-hint">or click to browse from your device</p>
+              </div>
+            </label>
+
+            <div class="selected-file" id="selected-file" aria-live="polite">
+              No file selected
+            </div>
+            <button type="submit" id="submit-btn" class="submit-btn" disabled>
+              Upload to n8n
+            </button>
+          </form>
+
+          <section class="debug-panel" aria-labelledby="request-preview-title">
+            <h3 id="request-preview-title">Upload payload preview</h3>
+            <p id="multipart-keys" class="multipart-keys">
+              Multipart keys: file
+            </p>
+            <button type="button" id="copy-payload-btn" class="copy-btn">
+              Copy payload JSON
+            </button>
+            <pre id="payload-preview" class="payload-preview">
 Select a file to preview metadata payload.</pre
-          >
+            >
+          </section>
+
+          <div id="status" class="status" aria-live="polite"></div>
         </section>
 
-        <div id="status" class="status" aria-live="polite"></div>
+        <section
+          id="tab-chat"
+          class="tab-panel"
+          aria-labelledby="tab-title-chat"
+        >
+          <h2 id="tab-title-chat" class="panel-title">Workflow Chat</h2>
+          <div
+            id="chat-messages"
+            class="chat-messages"
+            aria-live="polite"
+            aria-label="Chat messages"
+          ></div>
+          <form id="chat-form" class="chat-input-row" novalidate>
+            <input
+              id="chat-input"
+              type="text"
+              class="text-input chat-text-input"
+              placeholder="Type a message..."
+              autocomplete="off"
+              required
+            />
+            <button
+              type="submit"
+              id="chat-submit"
+              class="submit-btn chat-submit-btn"
+            >
+              Send
+            </button>
+          </form>
+        </section>
+
+        <section
+          id="tab-transcripts"
+          class="tab-panel"
+          aria-labelledby="tab-title-transcripts"
+        >
+          <h2 id="tab-title-transcripts" class="panel-title">
+            YouTube Transcript
+          </h2>
+          <p class="subtitle transcript-subtitle">
+            Paste a YouTube video URL to extract transcript through n8n.
+          </p>
+
+          <form id="transcript-form" class="transcript-form" novalidate>
+            <input
+              id="video-url-input"
+              type="url"
+              class="text-input"
+              placeholder="https://www.youtube.com/watch?v=..."
+              required
+            />
+            <button
+              type="submit"
+              id="transcript-submit"
+              class="submit-btn transcript-submit-btn"
+            >
+              Extract Transcript
+            </button>
+          </form>
+
+          <div id="transcript-status" class="status" aria-live="polite"></div>
+          <pre id="transcript-output" class="transcript-output">
+Transcript output will appear here.</pre
+          >
+          <button
+            type="button"
+            id="copy-transcript-btn"
+            class="copy-btn transcript-copy-btn"
+          >
+            Copy Transcript
+          </button>
+        </section>
+
+        <section
+          id="tab-history"
+          class="tab-panel"
+          aria-labelledby="tab-title-history"
+        >
+          <div class="history-head">
+            <h2 id="tab-title-history" class="panel-title">
+              Transcript History
+            </h2>
+            <button
+              type="button"
+              id="refresh-history-btn"
+              class="copy-btn history-refresh-btn"
+            >
+              Refresh
+            </button>
+          </div>
+          <p class="subtitle history-subtitle">
+            Previous transcribed videos from Supabase `transcripts` table.
+          </p>
+          <div id="history-status" class="status" aria-live="polite"></div>
+          <div id="history-list" class="history-list" aria-live="polite"></div>
+        </section>
       </section>
+
+      <!-- Upgrade Modal -->
+      <div
+        id="upgrade-modal"
+        class="upgrade-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upgrade-modal-title"
+        aria-hidden="true"
+      >
+        <div class="upgrade-modal-overlay"></div>
+        <div class="upgrade-modal-content">
+          <button
+            type="button"
+            id="upgrade-modal-close"
+            class="upgrade-modal-close"
+            aria-label="Close upgrade dialog"
+          >
+            ✕
+          </button>
+
+          <h2 id="upgrade-modal-title" class="upgrade-modal-title">
+            Upgrade to Pro
+          </h2>
+          <p class="upgrade-modal-subtitle">
+            You've used all your free credits. Unlock unlimited access with Pro.
+          </p>
+          <p
+            id="upgrade-modal-status"
+            class="status upgrade-modal-status"
+            aria-live="polite"
+          ></p>
+
+          <div class="upgrade-plan-comparison">
+            <div class="upgrade-plan-card upgrade-plan-free">
+              <h3 class="upgrade-plan-name">Free</h3>
+              <p class="upgrade-plan-current">Current plan</p>
+              <ul class="upgrade-plan-features">
+                <li>3 uploads</li>
+                <li>3 transcript extractions</li>
+                <li>Basic chat support</li>
+              </ul>
+            </div>
+
+            <div class="upgrade-plan-card upgrade-plan-pro">
+              <div class="upgrade-plan-badge">Recommended</div>
+              <h3 class="upgrade-plan-name">Pro</h3>
+              <p class="upgrade-plan-price">$9.99/month</p>
+              <ul class="upgrade-plan-features">
+                <li>✓ Unlimited uploads</li>
+                <li>✓ Unlimited transcripts</li>
+                <li>✓ Priority support</li>
+                <li>✓ Advanced features</li>
+              </ul>
+              <button type="button" id="upgrade-btn" class="upgrade-btn">
+                Upgrade to Pro
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
     <script src="app.js" defer></script>
   </body>
 </html>

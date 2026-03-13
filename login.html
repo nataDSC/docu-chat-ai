@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="card auth-card" aria-labelledby="login-title">
+        <header class="card-header">
+          <p class="badge">Supabase Auth</p>
+          <h1 id="login-title">Welcome back</h1>
+          <p class="subtitle">Sign in to your account to continue.</p>
+        </header>
+
+        <form id="login-form" class="auth-form" novalidate>
+          <label class="field-label" for="login-email">Email</label>
+          <input
+            id="login-email"
+            name="email"
+            type="email"
+            class="text-input"
+            autocomplete="email"
+            required
+          />
+
+          <label class="field-label" for="login-password">Password</label>
+          <input
+            id="login-password"
+            name="password"
+            type="password"
+            class="text-input"
+            autocomplete="current-password"
+            minlength="6"
+            required
+          />
+
+          <button type="submit" id="login-submit" class="submit-btn">
+            Log in
+          </button>
+        </form>
+
+        <p class="auth-link-row">
+          Need an account?
+          <a href="signup.html" class="auth-link">Create account</a>
+        </p>
+
+        <div id="auth-status" class="status" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="auth.js" defer></script>
+  </body>
+</html>

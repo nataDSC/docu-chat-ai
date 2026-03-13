@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create Account</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="card auth-card" aria-labelledby="signup-title">
+        <header class="card-header">
+          <p class="badge">Supabase Auth</p>
+          <h1 id="signup-title">Create account</h1>
+          <p class="subtitle">Sign up with email and password.</p>
+        </header>
+
+        <form id="signup-form" class="auth-form" novalidate>
+          <label class="field-label" for="signup-email">Email</label>
+          <input id="signup-email" name="email" type="email" class="text-input" autocomplete="email" required />
+
+          <label class="field-label" for="signup-password">Password</label>
+          <input
+            id="signup-password"
+            name="password"
+            type="password"
+            class="text-input"
+            autocomplete="new-password"
+            minlength="6"
+            required
+          />
+
+          <button type="submit" id="signup-submit" class="submit-btn">Create account</button>
+        </form>
+
+        <p class="auth-link-row">
+          Already have an account?
+          <a href="login.html" class="auth-link">Log in</a>
+        </p>
+
+        <div id="auth-status" class="status" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="auth.js" defer></script>
+  </body>
+</html>

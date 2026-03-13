@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell chat-shell">
+      <section class="card chat-card" aria-labelledby="chat-title">
+        <header class="card-header chat-header">
+          <div class="chat-header-left">
+            <p class="badge">n8n Chat</p>
+            <h1 id="chat-title">Chat</h1>
+          </div>
+          <div class="chat-header-right">
+            <span id="user-name" class="user-name">loading...</span>
+            <a href="index.html" class="nav-link">Upload</a>
+            <button type="button" id="logout-btn" class="logout-btn">
+              Log out
+            </button>
+          </div>
+        </header>
+
+        <div
+          id="chat-messages"
+          class="chat-messages"
+          aria-live="polite"
+          aria-label="Chat messages"
+        ></div>
+
+        <form id="chat-form" class="chat-input-row" novalidate>
+          <input
+            id="chat-input"
+            type="text"
+            class="text-input chat-text-input"
+            placeholder="Type a message…"
+            autocomplete="off"
+            required
+          />
+          <button
+            type="submit"
+            id="chat-submit"
+            class="submit-btn chat-submit-btn"
+          >
+            Send
+          </button>
+        </form>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="chat.js" defer></script>
+  </body>
+</html>
