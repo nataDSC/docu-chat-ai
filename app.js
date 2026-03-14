@@ -1093,12 +1093,6 @@ async function loadTranscriptHistory() {
       supabaseClient
         .from("transcript_history")
         .select("*")
-        .eq("userId", currentUser.id)
-        .order("created_at", { ascending: false }),
-    () =>
-      supabaseClient
-        .from("transcript_history")
-        .select("*")
         .order("created_at", { ascending: false }),
     () => supabaseClient.from("transcript_history").select("*"),
   ];

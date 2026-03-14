@@ -667,44 +667,12 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      let data = null;
-      let error = null;
-
-      const attempts = [
-        {
-          mode: "user_id",
-          run: () =>
-            supabaseAdmin
-              .from("transcript_history")
-              .select("*")
-              .eq("user_id", userId)
-              .order("created_at", { ascending: false })
-              .limit(limit),
-        },
-        {
-          mode: "userId",
-          run: () =>
-            supabaseAdmin
-              .from("transcript_history")
-              .select("*")
-              .eq("userId", userId)
-              .order("created_at", { ascending: false })
-              .limit(limit),
-        },
-      ];
-
-      for (const attempt of attempts) {
-        const result = await attempt.run();
-        data = result.data;
-        error = result.error;
-        if (!error && Array.isArray(data) && data.length > 0) {
-          break;
-        }
-
-        if (!error && Array.isArray(data) && data.length === 0) {
-          continue;
-        }
-      }
+      const { data, error } = await supabaseAdmin
+        .from("transcript_history")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(limit);
 
       if (error) {
         sendJson(res, 500, {

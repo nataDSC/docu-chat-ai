@@ -675,38 +675,12 @@ exports.handler = async (event) => {
         return sendJson(403, { error: "Forbidden: user mismatch." });
       }
 
-      let data = null;
-      let error = null;
-
-      const attempts = [
-        () =>
-          supabaseAdmin
-            .from("transcript_history")
-            .select("*")
-            .eq("user_id", userId)
-            .order("created_at", { ascending: false })
-            .limit(limit),
-        () =>
-          supabaseAdmin
-            .from("transcript_history")
-            .select("*")
-            .eq("userId", userId)
-            .order("created_at", { ascending: false })
-            .limit(limit),
-      ];
-
-      for (const attempt of attempts) {
-        const result = await attempt();
-        data = result.data;
-        error = result.error;
-        if (!error && Array.isArray(data) && data.length > 0) {
-          break;
-        }
-
-        if (!error && Array.isArray(data) && data.length === 0) {
-          continue;
-        }
-      }
+      const { data, error } = await supabaseAdmin
+        .from("transcript_history")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(limit);
 
       if (error) {
         return sendJson(500, {
