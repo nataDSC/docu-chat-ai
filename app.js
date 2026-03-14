@@ -532,7 +532,7 @@ async function postBillingJson(path, payload) {
 async function appendTranscriptHistory(videoUrl, transcriptText) {
   if (!currentUser || !supabaseClient) {
     setTranscriptStatus(
-      "Transcript saved in output, but history append skipped: session not ready.",
+      "Transcript ready, but history save was skipped because the session is not ready.",
       "error",
     );
     return;
@@ -560,7 +560,7 @@ async function appendTranscriptHistory(videoUrl, transcriptText) {
   } catch (error) {
     console.error("Transcript history append failed:", error);
     setTranscriptStatus(
-      `Transcript fetched, but history append failed: ${error.message}`,
+      `Transcript ready, but history could not be saved: ${error.message}`,
       "error",
     );
     appendMessage("system", `Transcript history warning: ${error.message}.`);
@@ -1033,7 +1033,7 @@ async function loadTranscriptHistory() {
     return;
   }
 
-  setHistoryStatus("Loading transcript history...");
+  setHistoryStatus("Loading history...");
 
   try {
     const data = await postBillingJson("/api/get-transcript-history", {
@@ -1042,9 +1042,8 @@ async function loadTranscriptHistory() {
 
     if (Array.isArray(data.rows)) {
       renderHistoryList(data.rows);
-      const modeSuffix = data.queryMode ? ` (mode: ${data.queryMode})` : "";
       setHistoryStatus(
-        `Loaded ${data.rows.length} history item(s) from transcript_history API${modeSuffix}.`,
+        `History loaded: ${data.rows.length} item(s).`,
         "success",
       );
       return;
@@ -1052,13 +1051,12 @@ async function loadTranscriptHistory() {
   } catch (error) {
     appendMessage(
       "system",
-      `Transcript history API fallback: ${error.message}. Trying direct Supabase query.`,
+      `History API unavailable: ${error.message}. Using direct database query.`,
     );
   }
 
   let data = null;
   let error = null;
-  let historySource = "transcript_history";
 
   const historyTableAttempts = [
     () =>
@@ -1090,45 +1088,8 @@ async function loadTranscriptHistory() {
     }
   }
 
-  const queryAttempts = [
-    () =>
-      supabaseClient
-        .from("transcripts")
-        .select("*")
-        .eq("user_id", currentUser.id)
-        .order("created_at", { ascending: false }),
-    () =>
-      supabaseClient
-        .from("transcripts")
-        .select("*")
-        .eq("userId", currentUser.id)
-        .order("created_at", { ascending: false }),
-    () =>
-      supabaseClient
-        .from("transcripts")
-        .select("*")
-        .order("created_at", { ascending: false }),
-    () => supabaseClient.from("transcripts").select("*"),
-  ];
-
-  const transcriptHistoryMissing =
-    error &&
-    /transcript_history|does not exist|relation/i.test(error.message || "");
-
-  if (error && transcriptHistoryMissing) {
-    historySource = "transcripts";
-    for (const attempt of queryAttempts) {
-      const result = await attempt();
-      data = result.data;
-      error = result.error;
-      if (!error) {
-        break;
-      }
-    }
-  }
-
   if (error) {
-    setHistoryStatus(`Could not load history: ${error.message}`, "error");
+    setHistoryStatus(`History could not be loaded: ${error.message}`, "error");
     renderHistoryList([]);
     return;
   }
@@ -1148,12 +1109,8 @@ async function loadTranscriptHistory() {
   });
 
   renderHistoryList(filteredRows);
-  const sourceSuffix =
-    historySource === "transcript_history"
-      ? "from transcript_history"
-      : "from transcripts fallback";
   setHistoryStatus(
-    `Loaded ${filteredRows.length} history item(s) ${sourceSuffix}.`,
+    `History loaded: ${filteredRows.length} item(s).`,
     "success",
   );
 }
@@ -1583,7 +1540,7 @@ function initializeTranscriptFeature() {
 
     transcriptSubmitButton.disabled = true;
     transcriptSubmitButton.textContent = "Extracting...";
-    setTranscriptStatus("Calling transcript webhook...");
+    setTranscriptStatus("Fetching transcript...");
 
     try {
       const payload = {
@@ -1624,7 +1581,7 @@ function initializeTranscriptFeature() {
 
       if (!transcriptText) {
         setTranscriptStatus(
-          "Webhook returned empty text, retrying once...",
+          "No transcript text returned. Retrying once...",
           "error",
         );
         const retryResult = await fetchTranscriptResponse();
@@ -1638,7 +1595,7 @@ function initializeTranscriptFeature() {
           "Transcript was processed, but the webhook returned no transcript text.";
         transcriptText = emptyTranscriptMessage;
         setTranscriptStatus(
-          "Transcript completed, but no text was returned by the webhook.",
+          "Transcript request completed, but no transcript text was returned.",
           "error",
         );
         setTranscriptOutput(transcriptText);
@@ -1653,7 +1610,7 @@ function initializeTranscriptFeature() {
         );
         return;
       } else {
-        setTranscriptStatus("Transcript fetched successfully.", "success");
+        setTranscriptStatus("Transcript ready.", "success");
       }
 
       setTranscriptOutput(transcriptText);
@@ -1666,7 +1623,7 @@ function initializeTranscriptFeature() {
         error.message,
         "",
       );
-      setTranscriptStatus(`Transcript fetch failed: ${error.message}`, "error");
+      setTranscriptStatus(`Transcript request failed: ${error.message}`, "error");
     } finally {
       transcriptSubmitButton.disabled = false;
       transcriptSubmitButton.textContent = "Extract Transcript";

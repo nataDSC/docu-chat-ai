@@ -66,7 +66,7 @@ The app reads this plan at login and applies it automatically.
 Transcript history note:
 
 - After each successful transcript extraction, the web app appends a new row through the billing API (`/api/append-transcript-history`) into a dedicated `transcript_history` table so history keeps all runs instead of being affected by n8n writes to `transcripts`.
-- The history tab reads through billing API endpoint `/api/get-transcript-history` (authenticated), then falls back to direct browser query only if needed.
+- The history tab reads through billing API endpoint `/api/get-transcript-history` (authenticated) and treats `transcript_history` as the source of truth.
 - Empty or failed transcript runs can be stored separately through `/api/append-transcript-failure` so they do not pollute the main `transcripts` table.
 
 Create table `transcript_history` in Supabase SQL editor:
