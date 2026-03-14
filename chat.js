@@ -1,5 +1,19 @@
-const CHAT_WEBHOOK_URL = "http://localhost:5678/webhook/chat";
-// const CHAT_WEBHOOK_URL = "https://maarseek.app.n8n.cloud/webhook-test/chat";
+const appConfig = window.APP_CONFIG || {};
+const isLocalHost =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
+const CHAT_WEBHOOK_URL = (() => {
+  const configuredUrl =
+    typeof appConfig.chatWebhookUrl === "string"
+      ? appConfig.chatWebhookUrl.trim()
+      : "";
+
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  return isLocalHost ? "http://localhost:5678/webhook/chat" : "";
+})();
 const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
 const chatMessages = document.getElementById("chat-messages");
@@ -131,6 +145,12 @@ chatForm.addEventListener("submit", async (event) => {
   setInputBusy(true);
 
   try {
+    if (!CHAT_WEBHOOK_URL) {
+      throw new Error(
+        "Chat webhook is not configured. Set APP_CONFIG.chatWebhookUrl in supabase-config.js.",
+      );
+    }
+
     const payload = {
       chatInput: userMessage,
       sessionId,

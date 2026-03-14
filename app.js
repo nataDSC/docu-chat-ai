@@ -1,19 +1,46 @@
-// const UPLOAD_WEBHOOK_URL = "https://maarseek.app.n8n.cloud/webhook-test/upload";
-const UPLOAD_WEBHOOK_URL = "http://localhost:5678/webhook/upload";
+const appConfig = window.APP_CONFIG || {};
+const isLocalHost =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
 
-// const CHAT_WEBHOOK_URL = "https://maarseek.app.n8n.cloud/webhook-test/chat";
-const CHAT_WEBHOOK_URL = "http://localhost:5678/webhook/chat";
+function getConfiguredUrl(value, localFallback = "") {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (trimmed) {
+    return trimmed;
+  }
 
-// const TRANSCRIPT_WEBHOOK_URL = "https://maarseek.app.n8n.cloud/webhook-test/fetch";
-const TRANSCRIPT_WEBHOOK_URL = "http://localhost:5678/webhook/fetch";
+  return isLocalHost ? localFallback : "";
+}
+
+const UPLOAD_WEBHOOK_URL = getConfiguredUrl(
+  appConfig.uploadWebhookUrl,
+  "http://localhost:5678/webhook/upload",
+);
+
+const CHAT_WEBHOOK_URL = getConfiguredUrl(
+  appConfig.chatWebhookUrl,
+  "http://localhost:5678/webhook/chat",
+);
+
+const TRANSCRIPT_WEBHOOK_URL = getConfiguredUrl(
+  appConfig.transcriptWebhookUrl,
+  "http://localhost:5678/webhook/fetch",
+);
 
 const ALLOWED_EXTENSIONS = ["txt", "pdf", "csv"];
 const DUMMY_USER_ID = "userA1B2C3";
 const FREE_UPLOAD_LIMIT = 3;
 const FREE_TRANSCRIPT_LIMIT = 3;
 const billingConfig = window.BILLING_CONFIG || {};
-const BILLING_API_BASE = billingConfig.apiBaseUrl || "http://localhost:4242";
+const BILLING_API_BASE = getConfiguredUrl(
+  billingConfig.apiBaseUrl,
+  "http://localhost:4242",
+).replace(/\/+$/, "");
 const BILLING_PRO_PRICE_ID = billingConfig.proPriceId || "";
+
+function buildBillingApiUrl(path) {
+  return BILLING_API_BASE ? `${BILLING_API_BASE}${path}` : path;
+}
 
 function getTranscriptWebhookCandidates() {
   const trimmed = (TRANSCRIPT_WEBHOOK_URL || "").trim();
@@ -321,7 +348,7 @@ async function startUpgradeCheckout() {
     const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     const response = await fetch(
-      `${BILLING_API_BASE}/api/create-checkout-session`,
+      buildBillingApiUrl("/api/create-checkout-session"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -376,7 +403,7 @@ async function applyUpgradeFromReturnSession() {
 
   try {
     const response = await fetch(
-      `${BILLING_API_BASE}/api/verify-checkout-session`,
+      buildBillingApiUrl("/api/verify-checkout-session"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -432,7 +459,7 @@ async function syncUserPlanFromServer(accessToken) {
   }
 
   try {
-    const response = await fetch(`${BILLING_API_BASE}/api/get-user-plan`, {
+    const response = await fetch(buildBillingApiUrl("/api/get-user-plan"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -493,7 +520,7 @@ async function postBillingJson(path, payload) {
   let accessToken = await getBillingAccessToken();
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await fetch(`${BILLING_API_BASE}${path}`, {
+    const response = await fetch(buildBillingApiUrl(path), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1042,7 +1069,10 @@ async function loadTranscriptHistory() {
       return;
     }
   } catch (error) {
-    console.warn("History API unavailable, using direct database query.", error);
+    console.warn(
+      "History API unavailable, using direct database query.",
+      error,
+    );
   }
 
   let data = null;
@@ -1467,6 +1497,12 @@ function initializeUploadFeature() {
     setStatus("Sending file to n8n webhook...");
 
     try {
+      if (!UPLOAD_WEBHOOK_URL) {
+        throw new Error(
+          "Upload webhook is not configured. Set APP_CONFIG.uploadWebhookUrl in supabase-config.js.",
+        );
+      }
+
       const metadata = createMetadataPayload(file);
       const payloadJson = JSON.stringify(metadata);
       const formData = new FormData();
@@ -1542,6 +1578,12 @@ function initializeTranscriptFeature() {
         const candidates = getTranscriptWebhookCandidates();
         let lastError = null;
 
+        if (candidates.length === 0) {
+          throw new Error(
+            "Transcript webhook is not configured. Set APP_CONFIG.transcriptWebhookUrl in supabase-config.js.",
+          );
+        }
+
         for (const url of candidates) {
           try {
             const response = await fetch(url, {
@@ -1613,7 +1655,10 @@ function initializeTranscriptFeature() {
         error.message,
         "",
       );
-      setTranscriptStatus(`Transcript request failed: ${error.message}`, "error");
+      setTranscriptStatus(
+        `Transcript request failed: ${error.message}`,
+        "error",
+      );
     } finally {
       transcriptSubmitButton.disabled = false;
       transcriptSubmitButton.textContent = "Extract Transcript";
@@ -1662,6 +1707,12 @@ function initializeChatFeature() {
     setChatInputBusy(true);
 
     try {
+      if (!CHAT_WEBHOOK_URL) {
+        throw new Error(
+          "Chat webhook is not configured. Set APP_CONFIG.chatWebhookUrl in supabase-config.js.",
+        );
+      }
+
       const payload = {
         chatInput: userMessage,
         sessionId,

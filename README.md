@@ -1,44 +1,46 @@
-# n8n File Upload Page
+# DocuChat AI
 
-Modern static page for uploading `.txt`, `.pdf`, and `.csv` files to:
+Static frontend for uploads, chat, transcript extraction, transcript history, Supabase auth, and Stripe Pro upgrades.
 
-`https://maarseek.app.n8n.cloud/webhook-test/upload`
+## Architecture
 
-## Run locally
+- Frontend: static HTML, CSS, and vanilla JS
+- Auth and data: Supabase
+- Billing API: local Node server for development or Netlify Functions for deployment
+- Workflows: n8n webhooks for upload, chat, and transcript extraction
 
-From this folder:
+## Local run
 
-```bash
-python3 -m http.server 8080
-```
-
-Then open:
-
-- http://localhost:8080
-
-## Stripe upgrade setup
-
-The upgrade button now starts a Stripe Checkout flow through a local billing API.
-
-### 1) Add your Stripe Price ID
-
-In `supabase-config.js`, set:
-
-- `window.BILLING_CONFIG.proPriceId` to your Stripe recurring price (for example `price_...`)
-
-### 2) Install billing dependencies
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-### 3) Start the billing API (new terminal)
+Start the billing API in one terminal:
 
 ```bash
 npm run start:billing
 ```
 
-The billing server reads secrets from `.env`:
+Start the static site in another terminal:
+
+```bash
+python3 -m http.server 8080
+```
+
+Open:
+
+- http://localhost:8080/index.html
+- http://localhost:8080/login.html
+- http://localhost:8080/signup.html
+
+Local development uses:
+
+- `APP_ENVIRONMENTS.local` in `supabase-config.js` for local n8n and billing URLs
+- `.env` for Stripe and Supabase server-side secrets
+
+Example `.env` values for local billing:
 
 ```env
 STRIPE_SECRET_KEY=your_stripe_secret_key
@@ -48,7 +50,72 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
-### 3.1) Enable persistent Pro entitlement in Supabase
+For local Stripe webhook forwarding:
+
+```bash
+stripe listen --forward-to localhost:4242/api/stripe-webhook
+```
+
+## Netlify deploy
+
+This repo now includes:
+
+- `netlify.toml` to publish the site and route `/api/*` to a Netlify function
+- `netlify/functions/api.js` for Stripe checkout, Stripe webhooks, plan sync, and transcript history endpoints
+
+### 1) Update public config
+
+Edit `supabase-config.js` before deploying:
+
+- Keep `SUPABASE_ENVIRONMENTS.cloud` pointed at your production Supabase project
+- Set `APP_ENVIRONMENTS.deployed.uploadWebhookUrl` to your public n8n upload webhook
+- Set `APP_ENVIRONMENTS.deployed.chatWebhookUrl` to your public n8n chat webhook
+- Set `APP_ENVIRONMENTS.deployed.transcriptWebhookUrl` to your public n8n transcript webhook
+- Set `window.BILLING_CONFIG.proPriceId` to your Stripe recurring price id
+
+Leave `billingApiBaseUrl` empty for deployed mode. An empty value makes the frontend use same-origin Netlify Functions at `/api/*`.
+
+### 2) Add Netlify environment variables
+
+In Netlify site settings, add:
+
+```env
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
+
+### 3) Deploy the site
+
+Deploy this folder to Netlify.
+
+Netlify settings:
+
+- Publish directory: `.`
+- Functions directory: `netlify/functions`
+- Build command: leave empty
+
+### 4) Point Stripe webhooks at Netlify
+
+In Stripe Dashboard, create a webhook endpoint at:
+
+- `https://<your-netlify-site>/api/stripe-webhook`
+
+Subscribe it to at least:
+
+- `checkout.session.completed`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+
+### 5) Validate production
+
+- Sign up or log in
+- Test upload, chat, and transcript actions against your hosted n8n webhooks
+- Reach the free limit and complete Stripe Checkout
+- Refresh and sign back in to confirm the Pro plan persists
+
+## Supabase tables
 
 Create table `user_plans` in Supabase SQL editor:
 
@@ -60,13 +127,13 @@ create table if not exists public.user_plans (
 );
 ```
 
-The billing API updates this table after successful Stripe checkout verification.
+The billing API updates this table after successful Stripe checkout verification or subscription lifecycle webhook events.
 The app reads this plan at login and applies it automatically.
 
 Transcript history note:
 
 - After each successful transcript extraction, the web app appends a new row through the billing API (`/api/append-transcript-history`) into a dedicated `transcript_history` table so history keeps all runs instead of being affected by n8n writes to `transcripts`.
-- The history tab reads through billing API endpoint `/api/get-transcript-history` (authenticated) and treats `transcript_history` as the source of truth.
+- The history tab reads through billing API endpoint `/api/get-transcript-history` and treats `transcript_history` as the source of truth.
 - Empty or failed transcript runs can be stored separately through `/api/append-transcript-failure` so they do not pollute the main `transcripts` table.
 
 Create table `transcript_history` in Supabase SQL editor:
@@ -111,69 +178,25 @@ create table if not exists public.billing_events (
 );
 ```
 
-Optional one-off override via terminal env vars:
-
-```bash
-STRIPE_SECRET_KEY=your_stripe_secret_key BILLING_PORT=4242 npm run start:billing
-```
-
-### 4) Start the web app
-
-```bash
-python3 -m http.server 8080
-```
-
-Open http://localhost:8080/index.html
-
-### 4.1) Connect Stripe webhook events
-
-In Stripe Dashboard, add a webhook endpoint pointing to your billing server:
-
-- `http://localhost:4242/api/stripe-webhook`
-
-For local Stripe CLI forwarding, you can also use:
-
-```bash
-stripe listen --forward-to localhost:4242/api/stripe-webhook
-```
-
-Then copy the webhook signing secret into `.env` as `STRIPE_WEBHOOK_SECRET`.
-
-Subscribe the endpoint to at least these events:
-
-- `checkout.session.completed`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
-
-This keeps `user_plans` in sync when subscriptions are canceled or otherwise change state.
-
-### 5) Test upgrade
-
-- Reach free limit (or keep your current locked state)
-- Click any action to open the upgrade modal
-- Click `Upgrade to Pro`
-- Complete Stripe checkout
-- You will be redirected back and upgraded to Pro in-app
-
 ## Behavior
 
 - Accepts only `.txt`, `.pdf`, `.csv`
 - Sends the selected file as `multipart/form-data`
 - Uses form field name: `file`
 - Also sends metadata fields: `filename`, `size`, `mimeType`, `extension`, `uploadedAt`
-- Shows success/error message after upload
+- Shows success or error status after upload, chat, transcript, and history actions
 - Requires an authenticated Supabase session on `index.html`
-- Displays the logged-in user name on the upload page
+- Displays the logged-in user name and current plan tier
 - Includes a `Log out` button that signs out and redirects to `login.html`
 
 ## Supabase auth pages
 
-This project now includes:
+This project includes:
 
 - `login.html` for existing users
 - `signup.html` for new account creation
 - `auth.js` shared auth logic
-- `supabase-config.js` for your Supabase URL and anon key
+- `supabase-config.js` for public Supabase and webhook configuration
 
 ### Configure Supabase
 
@@ -183,7 +206,7 @@ Open `supabase-config.js` and set:
 - `SUPABASE_ENVIRONMENTS.local` values for local stack
 - `SUPABASE_ENVIRONMENTS.cloud` values for cloud project
 
-This lets you switch projects by changing one line.
+This lets you switch Supabase projects without changing the deployment-specific webhook and billing settings.
 
 After configuring, open:
 

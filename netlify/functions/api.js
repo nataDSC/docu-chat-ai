@@ -1,69 +1,74 @@
-const http = require("http");
 const Stripe = require("stripe");
 const { createClient } = require("@supabase/supabase-js");
 const { randomUUID } = require("crypto");
-require("dotenv").config();
 
-const PORT = Number(process.env.BILLING_PORT || 4242);
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-if (!STRIPE_SECRET_KEY) {
-  console.error("Missing STRIPE_SECRET_KEY environment variable.");
-  process.exit(1);
-}
-
-const stripe = new Stripe(STRIPE_SECRET_KEY);
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
-function sendJson(res, status, payload) {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Id",
-  });
-  res.end(JSON.stringify(payload));
+const CORS_HEADERS = {
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-User-Id, Stripe-Signature",
+};
+
+function sendJson(statusCode, payload) {
+  return {
+    statusCode,
+    headers: CORS_HEADERS,
+    body: payload === undefined ? "" : JSON.stringify(payload),
+  };
 }
 
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let raw = "";
-    req.on("data", (chunk) => {
-      raw += chunk;
-    });
-    req.on("end", () => {
-      if (!raw) {
-        resolve({});
-        return;
-      }
+function getHeader(headers, key) {
+  if (!headers || typeof headers !== "object") {
+    return "";
+  }
 
-      try {
-        resolve(JSON.parse(raw));
-      } catch {
-        reject(new Error("Invalid JSON payload."));
-      }
-    });
-    req.on("error", (error) => reject(error));
-  });
+  const match = Object.keys(headers).find(
+    (headerName) => headerName.toLowerCase() === key.toLowerCase(),
+  );
+
+  return match ? headers[match] : "";
 }
 
-function readRawBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on("data", (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-    req.on("end", () => {
-      resolve(Buffer.concat(chunks));
-    });
-    req.on("error", (error) => reject(error));
-  });
+function decodeRawBody(event) {
+  if (!event.body) {
+    return Buffer.from("");
+  }
+
+  return Buffer.from(event.body, event.isBase64Encoded ? "base64" : "utf8");
+}
+
+function readJsonBody(event) {
+  const rawText = decodeRawBody(event).toString("utf8").trim();
+  if (!rawText) {
+    return {};
+  }
+
+  return JSON.parse(rawText);
+}
+
+function normalizePath(path) {
+  const rawPath = typeof path === "string" ? path : "/";
+  const fromFunction = rawPath.startsWith("/.netlify/functions/api")
+    ? `/api${rawPath.slice("/.netlify/functions/api".length)}`
+    : rawPath;
+
+  if (fromFunction.length > 1) {
+    return fromFunction.replace(/\/+$/, "");
+  }
+
+  return fromFunction;
 }
 
 function hasSupabasePersistenceConfig() {
@@ -82,7 +87,7 @@ async function persistUserPlan(userId, plan) {
     return {
       persisted: false,
       warning:
-        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env.",
+        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Netlify environment variables.",
     };
   }
 
@@ -114,7 +119,7 @@ async function getVerifiedUserFromAccessToken(accessToken) {
     return {
       user: null,
       error:
-        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env.",
+        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Netlify environment variables.",
       status: 500,
     };
   }
@@ -136,7 +141,7 @@ async function appendTranscriptHistoryRow(userId, videoUrl, transcriptText) {
     return {
       saved: false,
       warning:
-        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env.",
+        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Netlify environment variables.",
     };
   }
 
@@ -189,7 +194,7 @@ async function appendTranscriptHistoryRow(userId, videoUrl, transcriptText) {
     lastError = error;
   }
 
-  const insertMessage = lastError.message || "unknown error";
+  const insertMessage = lastError?.message || "unknown error";
   const duplicateConstraint =
     insertMessage.includes("unique_user_video_transcript") ||
     insertMessage.toLowerCase().includes("duplicate key value");
@@ -218,7 +223,7 @@ async function appendTranscriptFailureRow(
     return {
       saved: false,
       warning:
-        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env.",
+        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Netlify environment variables.",
     };
   }
 
@@ -330,7 +335,7 @@ async function getUserIdFromSubscriptionObject(subscription) {
 
   const subscriptionId =
     typeof subscription?.id === "string" ? subscription.id : "";
-  if (!subscriptionId) {
+  if (!subscriptionId || !stripe) {
     return "";
   }
 
@@ -450,56 +455,66 @@ async function handleStripeWebhookEvent(event) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
-  if (req.method === "OPTIONS") {
-    sendJson(res, 204, {});
-    return;
+exports.handler = async (event) => {
+  const path = normalizePath(event.path);
+
+  if (event.httpMethod === "OPTIONS") {
+    return sendJson(204, {});
   }
 
-  if (req.method === "POST" && req.url === "/api/stripe-webhook") {
+  if (event.httpMethod === "POST" && path === "/api/stripe-webhook") {
     try {
+      if (!stripe) {
+        return sendJson(500, {
+          error: "Missing STRIPE_SECRET_KEY environment variable.",
+        });
+      }
+
       if (!STRIPE_WEBHOOK_SECRET) {
-        sendJson(res, 500, {
+        return sendJson(500, {
           error: "Missing STRIPE_WEBHOOK_SECRET environment variable.",
         });
-        return;
       }
 
-      const signature = req.headers["stripe-signature"];
-      if (typeof signature !== "string" || !signature) {
-        sendJson(res, 400, { error: "Missing Stripe signature header." });
-        return;
+      const signature = getHeader(event.headers, "stripe-signature");
+      if (!signature) {
+        return sendJson(400, { error: "Missing Stripe signature header." });
       }
 
-      const rawBody = await readRawBody(req);
-      const event = stripe.webhooks.constructEvent(
+      const rawBody = decodeRawBody(event);
+      const stripeEvent = stripe.webhooks.constructEvent(
         rawBody,
         signature,
         STRIPE_WEBHOOK_SECRET,
       );
 
-      const result = await handleStripeWebhookEvent(event);
+      const result = await handleStripeWebhookEvent(stripeEvent);
       webhookLog("Webhook handled", {
-        eventId: event.id,
-        eventType: event.type,
+        eventId: stripeEvent.id,
+        eventType: stripeEvent.type,
         ok: result.ok,
         message: result.message,
       });
-      sendJson(res, 200, { received: true, message: result.message });
+      return sendJson(200, { received: true, message: result.message });
     } catch (error) {
       webhookLog("Webhook handling failed", {
         error: error.message || "unknown error",
       });
-      sendJson(res, 400, {
+      return sendJson(400, {
         error: error.message || "Invalid Stripe webhook event.",
       });
     }
-    return;
   }
 
-  if (req.method === "POST" && req.url === "/api/create-checkout-session") {
+  if (event.httpMethod === "POST" && path === "/api/create-checkout-session") {
     try {
-      const body = await readBody(req);
+      if (!stripe) {
+        return sendJson(500, {
+          error: "Missing STRIPE_SECRET_KEY environment variable.",
+        });
+      }
+
+      const body = readJsonBody(event);
       const userId = typeof body.userId === "string" ? body.userId : "";
       const email = typeof body.email === "string" ? body.email : "";
       const priceId = typeof body.priceId === "string" ? body.priceId : "";
@@ -509,11 +524,10 @@ const server = http.createServer(async (req, res) => {
         typeof body.cancelUrl === "string" ? body.cancelUrl : "";
 
       if (!userId || !priceId || !successUrl || !cancelUrl) {
-        sendJson(res, 400, {
+        return sendJson(400, {
           error:
             "Missing required fields: userId, priceId, successUrl, cancelUrl.",
         });
-        return;
       }
 
       const session = await stripe.checkout.sessions.create({
@@ -540,24 +554,28 @@ const server = http.createServer(async (req, res) => {
         },
       });
 
-      sendJson(res, 200, { url: session.url });
+      return sendJson(200, { url: session.url });
     } catch (error) {
-      sendJson(res, 500, {
+      return sendJson(500, {
         error: error.message || "Failed to create checkout session.",
       });
     }
-    return;
   }
 
-  if (req.method === "POST" && req.url === "/api/verify-checkout-session") {
+  if (event.httpMethod === "POST" && path === "/api/verify-checkout-session") {
     try {
-      const body = await readBody(req);
+      if (!stripe) {
+        return sendJson(500, {
+          error: "Missing STRIPE_SECRET_KEY environment variable.",
+        });
+      }
+
+      const body = readJsonBody(event);
       const sessionId =
         typeof body.sessionId === "string" ? body.sessionId : "";
 
       if (!sessionId) {
-        sendJson(res, 400, { error: "Missing required field: sessionId." });
-        return;
+        return sendJson(400, { error: "Missing required field: sessionId." });
       }
 
       const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -571,7 +589,7 @@ const server = http.createServer(async (req, res) => {
         persistResult = await persistUserPlan(userId, "pro");
       }
 
-      sendJson(res, 200, {
+      return sendJson(200, {
         paid,
         userId,
         customerEmail: session.customer_details?.email || "",
@@ -579,36 +597,32 @@ const server = http.createServer(async (req, res) => {
         warning: persistResult.warning || "",
       });
     } catch (error) {
-      sendJson(res, 500, {
+      return sendJson(500, {
         error: error.message || "Failed to verify checkout session.",
       });
     }
-    return;
   }
 
-  if (req.method === "POST" && req.url === "/api/get-user-plan") {
+  if (event.httpMethod === "POST" && path === "/api/get-user-plan") {
     try {
-      const body = await readBody(req);
+      const body = readJsonBody(event);
       const userId = typeof body.userId === "string" ? body.userId : "";
       const accessToken =
         typeof body.accessToken === "string" ? body.accessToken : "";
 
       if (!userId || !accessToken) {
-        sendJson(res, 400, {
+        return sendJson(400, {
           error: "Missing required fields: userId and accessToken.",
         });
-        return;
       }
 
       const verified = await getVerifiedUserFromAccessToken(accessToken);
       if (!verified.user) {
-        sendJson(res, verified.status, { error: verified.error });
-        return;
+        return sendJson(verified.status, { error: verified.error });
       }
 
       if (verified.user.id !== userId) {
-        sendJson(res, 403, { error: "Forbidden: user mismatch." });
-        return;
+        return sendJson(403, { error: "Forbidden: user mismatch." });
       }
 
       const { data, error } = await supabaseAdmin
@@ -619,28 +633,25 @@ const server = http.createServer(async (req, res) => {
         .limit(1);
 
       if (error) {
-        sendJson(res, 500, {
+        return sendJson(500, {
           error: `Could not fetch user plan from Supabase: ${error.message}`,
         });
-        return;
       }
 
       const latest = Array.isArray(data) && data.length > 0 ? data[0] : null;
-
-      sendJson(res, 200, {
+      return sendJson(200, {
         plan: latest?.plan === "pro" ? "pro" : "free",
       });
     } catch (error) {
-      sendJson(res, 500, {
+      return sendJson(500, {
         error: error.message || "Failed to load user plan.",
       });
     }
-    return;
   }
 
-  if (req.method === "POST" && req.url === "/api/get-transcript-history") {
+  if (event.httpMethod === "POST" && path === "/api/get-transcript-history") {
     try {
-      const body = await readBody(req);
+      const body = readJsonBody(event);
       const userId = typeof body.userId === "string" ? body.userId : "";
       const accessToken =
         typeof body.accessToken === "string" ? body.accessToken : "";
@@ -650,51 +661,42 @@ const server = http.createServer(async (req, res) => {
         : 100;
 
       if (!userId || !accessToken) {
-        sendJson(res, 400, {
+        return sendJson(400, {
           error: "Missing required fields: userId and accessToken.",
         });
-        return;
       }
 
       const verified = await getVerifiedUserFromAccessToken(accessToken);
       if (!verified.user) {
-        sendJson(res, verified.status, { error: verified.error });
-        return;
+        return sendJson(verified.status, { error: verified.error });
       }
 
       if (verified.user.id !== userId) {
-        sendJson(res, 403, { error: "Forbidden: user mismatch." });
-        return;
+        return sendJson(403, { error: "Forbidden: user mismatch." });
       }
 
       let data = null;
       let error = null;
 
       const attempts = [
-        {
-          mode: "user_id",
-          run: () =>
-            supabaseAdmin
-              .from("transcript_history")
-              .select("*")
-              .eq("user_id", userId)
-              .order("created_at", { ascending: false })
-              .limit(limit),
-        },
-        {
-          mode: "userId",
-          run: () =>
-            supabaseAdmin
-              .from("transcript_history")
-              .select("*")
-              .eq("userId", userId)
-              .order("created_at", { ascending: false })
-              .limit(limit),
-        },
+        () =>
+          supabaseAdmin
+            .from("transcript_history")
+            .select("*")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(limit),
+        () =>
+          supabaseAdmin
+            .from("transcript_history")
+            .select("*")
+            .eq("userId", userId)
+            .order("created_at", { ascending: false })
+            .limit(limit),
       ];
 
       for (const attempt of attempts) {
-        const result = await attempt.run();
+        const result = await attempt();
         data = result.data;
         error = result.error;
         if (!error && Array.isArray(data) && data.length > 0) {
@@ -707,10 +709,9 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (error) {
-        sendJson(res, 500, {
+        return sendJson(500, {
           error: `Could not fetch transcript history: ${error.message}`,
         });
-        return;
       }
 
       const rows = Array.isArray(data) ? data : [];
@@ -718,29 +719,24 @@ const server = http.createServer(async (req, res) => {
         userId,
         rowCount: rows.length,
       });
-
-      sendJson(res, 200, {
+      return sendJson(200, {
         source: "transcript_history",
         rows,
       });
     } catch (error) {
-      sendJson(res, 500, {
+      return sendJson(500, {
         error: error.message || "Failed to load transcript history.",
       });
     }
-    return;
   }
 
-  if (req.method === "POST" && req.url === "/api/append-transcript-history") {
+  if (
+    event.httpMethod === "POST" &&
+    path === "/api/append-transcript-history"
+  ) {
     try {
-      const rawBody = await readRawBody(req);
-      const rawText = rawBody.toString("utf8");
-      const body = rawText.trim() ? JSON.parse(rawText) : {};
-
-      const authHeader =
-        typeof req.headers.authorization === "string"
-          ? req.headers.authorization
-          : "";
+      const body = readJsonBody(event);
+      const authHeader = getHeader(event.headers, "authorization");
       const headerToken = authHeader.startsWith("Bearer ")
         ? authHeader.slice(7).trim()
         : "";
@@ -750,9 +746,7 @@ const server = http.createServer(async (req, res) => {
           ? body.userId
           : typeof body.user_id === "string"
             ? body.user_id
-            : typeof req.headers["x-user-id"] === "string"
-              ? req.headers["x-user-id"]
-              : "";
+            : getHeader(event.headers, "x-user-id");
 
       const accessToken =
         typeof body.accessToken === "string"
@@ -780,51 +774,21 @@ const server = http.createServer(async (req, res) => {
               : typeof body.text === "string"
                 ? body.text
                 : "";
-      const missing = {
-        userId: !userId,
-        accessToken: !accessToken,
-        videoUrl: !videoUrl,
-        transcriptText: !transcriptText,
-      };
-
-      webhookLog("Transcript history append requested", {
-        rawBodyLength: rawBody.length,
-        userId: userId || "",
-        hasAccessToken: Boolean(accessToken),
-        videoUrlPreview: videoUrl ? videoUrl.slice(0, 80) : "",
-        transcriptLength: transcriptText.length,
-      });
 
       if (!userId || !accessToken || !videoUrl || !transcriptText) {
-        webhookLog("Transcript history append rejected", {
-          reason: "missing required fields",
-          missing,
-        });
-        sendJson(res, 400, {
+        return sendJson(400, {
           error:
             "Missing required fields: userId, accessToken, videoUrl, transcriptText.",
         });
-        return;
       }
 
       const verified = await getVerifiedUserFromAccessToken(accessToken);
       if (!verified.user) {
-        webhookLog("Transcript history append rejected", {
-          reason: "invalid access token",
-          status: verified.status,
-        });
-        sendJson(res, verified.status, { error: verified.error });
-        return;
+        return sendJson(verified.status, { error: verified.error });
       }
 
       if (verified.user.id !== userId) {
-        webhookLog("Transcript history append rejected", {
-          reason: "user mismatch",
-          tokenUserId: verified.user.id,
-          requestUserId: userId,
-        });
-        sendJson(res, 403, { error: "Forbidden: user mismatch." });
-        return;
+        return sendJson(403, { error: "Forbidden: user mismatch." });
       }
 
       const result = await appendTranscriptHistoryRow(
@@ -838,10 +802,9 @@ const server = http.createServer(async (req, res) => {
           userId,
           warning: result.warning || "",
         });
-        sendJson(res, 500, {
+        return sendJson(500, {
           error: result.warning || "Could not append transcript history.",
         });
-        return;
       }
 
       webhookLog("Transcript history append saved", {
@@ -849,7 +812,7 @@ const server = http.createServer(async (req, res) => {
         table: result.table || "transcript_history",
         id: result.id || "",
       });
-      sendJson(res, 200, {
+      return sendJson(200, {
         saved: true,
         table: result.table || "transcript_history",
         id: result.id || "",
@@ -858,23 +821,19 @@ const server = http.createServer(async (req, res) => {
       webhookLog("Transcript history append crashed", {
         error: error.message || "unknown error",
       });
-      sendJson(res, 500, {
+      return sendJson(500, {
         error: error.message || "Failed to append transcript history.",
       });
     }
-    return;
   }
 
-  if (req.method === "POST" && req.url === "/api/append-transcript-failure") {
+  if (
+    event.httpMethod === "POST" &&
+    path === "/api/append-transcript-failure"
+  ) {
     try {
-      const rawBody = await readRawBody(req);
-      const rawText = rawBody.toString("utf8");
-      const body = rawText.trim() ? JSON.parse(rawText) : {};
-
-      const authHeader =
-        typeof req.headers.authorization === "string"
-          ? req.headers.authorization
-          : "";
+      const body = readJsonBody(event);
+      const authHeader = getHeader(event.headers, "authorization");
       const headerToken = authHeader.startsWith("Bearer ")
         ? authHeader.slice(7).trim()
         : "";
@@ -884,9 +843,7 @@ const server = http.createServer(async (req, res) => {
           ? body.userId
           : typeof body.user_id === "string"
             ? body.user_id
-            : typeof req.headers["x-user-id"] === "string"
-              ? req.headers["x-user-id"]
-              : "";
+            : getHeader(event.headers, "x-user-id");
 
       const accessToken =
         typeof body.accessToken === "string"
@@ -920,31 +877,20 @@ const server = http.createServer(async (req, res) => {
             ? body.raw_response
             : "";
 
-      webhookLog("Transcript failure append requested", {
-        rawBodyLength: rawBody.length,
-        userId: userId || "",
-        hasAccessToken: Boolean(accessToken),
-        videoUrlPreview: videoUrl ? videoUrl.slice(0, 80) : "",
-        failureReasonPreview: failureReason ? failureReason.slice(0, 120) : "",
-      });
-
       if (!userId || !accessToken || !videoUrl || !failureReason) {
-        sendJson(res, 400, {
+        return sendJson(400, {
           error:
             "Missing required fields: userId, accessToken, videoUrl, failureReason.",
         });
-        return;
       }
 
       const verified = await getVerifiedUserFromAccessToken(accessToken);
       if (!verified.user) {
-        sendJson(res, verified.status, { error: verified.error });
-        return;
+        return sendJson(verified.status, { error: verified.error });
       }
 
       if (verified.user.id !== userId) {
-        sendJson(res, 403, { error: "Forbidden: user mismatch." });
-        return;
+        return sendJson(403, { error: "Forbidden: user mismatch." });
       }
 
       const result = await appendTranscriptFailureRow(
@@ -955,32 +901,18 @@ const server = http.createServer(async (req, res) => {
       );
 
       if (!result.saved) {
-        webhookLog("Transcript failure append failed", {
-          userId,
-          warning: result.warning || "",
-        });
-        sendJson(res, 500, {
+        return sendJson(500, {
           error: result.warning || "Could not append transcript failure.",
         });
-        return;
       }
 
-      webhookLog("Transcript failure append saved", { userId });
-      sendJson(res, 200, { saved: true });
+      return sendJson(200, { saved: true });
     } catch (error) {
-      webhookLog("Transcript failure append crashed", {
-        error: error.message || "unknown error",
-      });
-      sendJson(res, 500, {
+      return sendJson(500, {
         error: error.message || "Failed to append transcript failure.",
       });
     }
-    return;
   }
 
-  sendJson(res, 404, { error: "Not found." });
-});
-
-server.listen(PORT, () => {
-  console.log(`Billing API listening on http://localhost:${PORT}`);
-});
+  return sendJson(404, { error: `No route for ${event.httpMethod} ${path}.` });
+};
