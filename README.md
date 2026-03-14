@@ -65,7 +65,38 @@ The app reads this plan at login and applies it automatically.
 
 Transcript history note:
 
-- After each successful transcript extraction, the web app appends a new row through the billing API (`/api/append-transcript-history`) so history keeps all runs instead of showing only the latest overwritten row.
+- After each successful transcript extraction, the web app appends a new row through the billing API (`/api/append-transcript-history`) into a dedicated `transcript_history` table so history keeps all runs instead of being affected by n8n writes to `transcripts`.
+- The history tab reads through billing API endpoint `/api/get-transcript-history` (authenticated), then falls back to direct browser query only if needed.
+- Empty or failed transcript runs can be stored separately through `/api/append-transcript-failure` so they do not pollute the main `transcripts` table.
+
+Create table `transcript_history` in Supabase SQL editor:
+
+```sql
+create table if not exists public.transcript_history (
+	id uuid primary key,
+	user_id uuid not null references auth.users(id) on delete cascade,
+	video_url text not null,
+	transcript text not null,
+	payload_json jsonb null,
+	created_at timestamptz not null default now()
+);
+
+create index if not exists idx_transcript_history_user_created_at
+on public.transcript_history (user_id, created_at desc);
+```
+
+Optional transcript failure audit table:
+
+```sql
+create table if not exists public.transcript_failures (
+	id uuid primary key,
+	user_id uuid not null references auth.users(id) on delete cascade,
+	video_url text not null,
+	failure_reason text not null,
+	raw_response text null,
+	created_at timestamptz not null default now()
+);
+```
 
 Optional audit table for subscription lifecycle debugging:
 

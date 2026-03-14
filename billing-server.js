@@ -226,9 +226,9 @@ async function appendTranscriptHistoryRow(userId, videoUrl, transcriptText) {
   let lastError = null;
 
   for (const row of candidateRows) {
-    const { error } = await supabaseAdmin.from("transcripts").insert(row);
+    const { error } = await supabaseAdmin.from("transcript_history").insert(row);
     if (!error) {
-      return { saved: true };
+      return { saved: true, table: "transcript_history", id: row.id || "" };
     }
 
     lastError = error;
@@ -250,6 +250,61 @@ async function appendTranscriptHistoryRow(userId, videoUrl, transcriptText) {
   return {
     saved: false,
     warning: `Could not append transcript history row: ${insertMessage}`,
+  };
+}
+
+async function appendTranscriptFailureRow(userId, videoUrl, failureReason, rawResponse = "") {
+  if (!hasSupabasePersistenceConfig()) {
+    return {
+      saved: false,
+      warning:
+        "Supabase persistence is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env.",
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+  const failureId = randomUUID();
+
+  const candidateRows = [
+    {
+      id: failureId,
+      user_id: userId,
+      video_url: videoUrl,
+      failure_reason: failureReason,
+      raw_response: rawResponse,
+      created_at: nowIso,
+    },
+    {
+      id: failureId,
+      userId: userId,
+      videoUrl,
+      failureReason,
+      rawResponse,
+      created_at: nowIso,
+    },
+    {
+      user_id: userId,
+      video_url: videoUrl,
+      failure_reason: failureReason,
+      raw_response: rawResponse,
+      created_at: nowIso,
+    },
+  ];
+
+  let lastError = null;
+
+  for (const row of candidateRows) {
+    const { error } = await supabaseAdmin.from("transcript_failures").insert(row);
+    if (!error) {
+      return { saved: true };
+    }
+
+    lastError = error;
+  }
+
+  return {
+    saved: false,
+    warning: `Could not append transcript failure row: ${lastError?.message || "unknown error"}`,
   };
 }
 
@@ -622,6 +677,103 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && req.url === "/api/get-transcript-history") {
+    try {
+      const body = await readBody(req);
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      const accessToken =
+        typeof body.accessToken === "string" ? body.accessToken : "";
+      const requestedLimit = Number(body.limit);
+      const limit = Number.isFinite(requestedLimit)
+        ? Math.max(1, Math.min(200, requestedLimit))
+        : 100;
+
+      if (!userId || !accessToken) {
+        sendJson(res, 400, {
+          error: "Missing required fields: userId and accessToken.",
+        });
+        return;
+      }
+
+      const verified = await getVerifiedUserFromAccessToken(accessToken);
+      if (!verified.user) {
+        sendJson(res, verified.status, { error: verified.error });
+        return;
+      }
+
+      if (verified.user.id !== userId) {
+        sendJson(res, 403, { error: "Forbidden: user mismatch." });
+        return;
+      }
+
+      let data = null;
+      let error = null;
+      let queryMode = "user_id";
+
+      const attempts = [
+        {
+          mode: "user_id",
+          run: () =>
+            supabaseAdmin
+              .from("transcript_history")
+              .select("*")
+              .eq("user_id", userId)
+              .order("created_at", { ascending: false })
+              .limit(limit),
+        },
+        {
+          mode: "userId",
+          run: () =>
+            supabaseAdmin
+              .from("transcript_history")
+              .select("*")
+              .eq("userId", userId)
+              .order("created_at", { ascending: false })
+              .limit(limit),
+        },
+      ];
+
+      for (const attempt of attempts) {
+        const result = await attempt.run();
+        data = result.data;
+        error = result.error;
+        queryMode = attempt.mode;
+        if (!error && Array.isArray(data) && data.length > 0) {
+          break;
+        }
+
+        if (!error && Array.isArray(data) && data.length === 0) {
+          continue;
+        }
+      }
+
+      if (error) {
+        sendJson(res, 500, {
+          error: `Could not fetch transcript history: ${error.message}`,
+        });
+        return;
+      }
+
+      const rows = Array.isArray(data) ? data : [];
+      webhookLog("Transcript history fetched", {
+        userId,
+        rowCount: rows.length,
+        queryMode,
+      });
+
+      sendJson(res, 200, {
+        source: "transcript_history",
+        queryMode,
+        rows,
+      });
+    } catch (error) {
+      sendJson(res, 500, {
+        error: error.message || "Failed to load transcript history.",
+      });
+    }
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/append-transcript-history") {
     try {
       const rawBody = await readRawBody(req);
@@ -737,14 +889,133 @@ const server = http.createServer(async (req, res) => {
 
       webhookLog("Transcript history append saved", {
         userId,
+        table: result.table || "transcript_history",
+        id: result.id || "",
       });
-      sendJson(res, 200, { saved: true });
+      sendJson(res, 200, {
+        saved: true,
+        table: result.table || "transcript_history",
+        id: result.id || "",
+      });
     } catch (error) {
       webhookLog("Transcript history append crashed", {
         error: error.message || "unknown error",
       });
       sendJson(res, 500, {
         error: error.message || "Failed to append transcript history.",
+      });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/append-transcript-failure") {
+    try {
+      const rawBody = await readRawBody(req);
+      const rawText = rawBody.toString("utf8");
+      const body = rawText.trim() ? JSON.parse(rawText) : {};
+
+      const authHeader =
+        typeof req.headers.authorization === "string"
+          ? req.headers.authorization
+          : "";
+      const headerToken = authHeader.startsWith("Bearer ")
+        ? authHeader.slice(7).trim()
+        : "";
+
+      const userId =
+        typeof body.userId === "string"
+          ? body.userId
+          : typeof body.user_id === "string"
+            ? body.user_id
+            : typeof req.headers["x-user-id"] === "string"
+              ? req.headers["x-user-id"]
+              : "";
+
+      const accessToken =
+        typeof body.accessToken === "string"
+          ? body.accessToken
+          : typeof body.access_token === "string"
+            ? body.access_token
+            : headerToken;
+
+      const videoUrl =
+        typeof body.videoUrl === "string"
+          ? body.videoUrl
+          : typeof body.video_url === "string"
+            ? body.video_url
+            : typeof body.url === "string"
+              ? body.url
+              : "";
+
+      const failureReason =
+        typeof body.failureReason === "string"
+          ? body.failureReason
+          : typeof body.failure_reason === "string"
+            ? body.failure_reason
+            : typeof body.error === "string"
+              ? body.error
+              : "";
+
+      const rawResponse =
+        typeof body.rawResponse === "string"
+          ? body.rawResponse
+          : typeof body.raw_response === "string"
+            ? body.raw_response
+            : "";
+
+      webhookLog("Transcript failure append requested", {
+        rawBodyLength: rawBody.length,
+        userId: userId || "",
+        hasAccessToken: Boolean(accessToken),
+        videoUrlPreview: videoUrl ? videoUrl.slice(0, 80) : "",
+        failureReasonPreview: failureReason ? failureReason.slice(0, 120) : "",
+      });
+
+      if (!userId || !accessToken || !videoUrl || !failureReason) {
+        sendJson(res, 400, {
+          error:
+            "Missing required fields: userId, accessToken, videoUrl, failureReason.",
+        });
+        return;
+      }
+
+      const verified = await getVerifiedUserFromAccessToken(accessToken);
+      if (!verified.user) {
+        sendJson(res, verified.status, { error: verified.error });
+        return;
+      }
+
+      if (verified.user.id !== userId) {
+        sendJson(res, 403, { error: "Forbidden: user mismatch." });
+        return;
+      }
+
+      const result = await appendTranscriptFailureRow(
+        userId,
+        videoUrl,
+        failureReason,
+        rawResponse,
+      );
+
+      if (!result.saved) {
+        webhookLog("Transcript failure append failed", {
+          userId,
+          warning: result.warning || "",
+        });
+        sendJson(res, 500, {
+          error: result.warning || "Could not append transcript failure.",
+        });
+        return;
+      }
+
+      webhookLog("Transcript failure append saved", { userId });
+      sendJson(res, 200, { saved: true });
+    } catch (error) {
+      webhookLog("Transcript failure append crashed", {
+        error: error.message || "unknown error",
+      });
+      sendJson(res, 500, {
+        error: error.message || "Failed to append transcript failure.",
       });
     }
     return;

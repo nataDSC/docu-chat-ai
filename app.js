@@ -15,6 +15,24 @@ const billingConfig = window.BILLING_CONFIG || {};
 const BILLING_API_BASE = billingConfig.apiBaseUrl || "http://localhost:4242";
 const BILLING_PRO_PRICE_ID = billingConfig.proPriceId || "";
 
+function getTranscriptWebhookCandidates() {
+  const trimmed = (TRANSCRIPT_WEBHOOK_URL || "").trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const candidates = [trimmed];
+
+  // n8n often uses /webhook-test/* for test runs and /webhook/* for active runs.
+  if (trimmed.includes("/webhook/")) {
+    candidates.push(trimmed.replace("/webhook/", "/webhook-test/"));
+  } else if (trimmed.includes("/webhook-test/")) {
+    candidates.push(trimmed.replace("/webhook-test/", "/webhook/"));
+  }
+
+  return Array.from(new Set(candidates));
+}
+
 const form = document.getElementById("upload-form");
 const fileInput = document.getElementById("file-input");
 const selectedFile = document.getElementById("selected-file");
@@ -441,6 +459,76 @@ async function syncUserPlanFromServer(accessToken) {
   }
 }
 
+async function getBillingAccessToken(forceRefresh = false) {
+  if (!supabaseClient) {
+    throw new Error("Supabase client is not ready.");
+  }
+
+  if (forceRefresh) {
+    const refreshResult = await supabaseClient.auth.refreshSession();
+    const refreshError = refreshResult.error;
+    const refreshedSession = refreshResult.data?.session;
+
+    if (refreshError || !refreshedSession?.access_token) {
+      throw new Error("Could not refresh user session token.");
+    }
+
+    currentAccessToken = refreshedSession.access_token;
+    return currentAccessToken;
+  }
+
+  const sessionResult = await supabaseClient.auth.getSession();
+  const sessionError = sessionResult.error;
+  const session = sessionResult.data?.session;
+
+  if (sessionError || !session?.access_token) {
+    throw new Error("Could not access user session token.");
+  }
+
+  currentAccessToken = session.access_token;
+  return currentAccessToken;
+}
+
+async function postBillingJson(path, payload) {
+  let accessToken = await getBillingAccessToken();
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch(`${BILLING_API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "X-User-Id": currentUser.id,
+      },
+      body: JSON.stringify({
+        ...payload,
+        userId: currentUser.id,
+        accessToken,
+        user_id: currentUser.id,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      return data;
+    }
+
+    const errorMessage = data.error || "Billing request failed.";
+    if (
+      response.status === 401 &&
+      errorMessage === "Invalid access token." &&
+      attempt === 0
+    ) {
+      accessToken = await getBillingAccessToken(true);
+      continue;
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  throw new Error("Billing request failed after token refresh.");
+}
+
 async function appendTranscriptHistory(videoUrl, transcriptText) {
   if (!currentUser || !supabaseClient) {
     setTranscriptStatus(
@@ -451,22 +539,6 @@ async function appendTranscriptHistory(videoUrl, transcriptText) {
   }
 
   try {
-    let accessToken = currentAccessToken;
-
-    if (!accessToken) {
-      const {
-        data: { session },
-        error,
-      } = await supabaseClient.auth.getSession();
-
-      if (error || !session?.access_token) {
-        throw new Error("Could not access user session token.");
-      }
-
-      accessToken = session.access_token;
-      currentAccessToken = accessToken;
-    }
-
     if (!videoUrl || !videoUrl.trim()) {
       throw new Error("Video URL is empty for transcript history append.");
     }
@@ -477,31 +549,12 @@ async function appendTranscriptHistory(videoUrl, transcriptText) {
       );
     }
 
-    const response = await fetch(
-      `${BILLING_API_BASE}/api/append-transcript-history`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          "X-User-Id": currentUser.id,
-        },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          accessToken,
-          videoUrl,
-          transcriptText,
-          user_id: currentUser.id,
-          video_url: videoUrl,
-          transcript: transcriptText,
-        }),
-      },
-    );
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.error || "Could not append transcript history.");
-    }
+    await postBillingJson("/api/append-transcript-history", {
+      videoUrl,
+      transcriptText,
+      video_url: videoUrl,
+      transcript: transcriptText,
+    });
 
     console.info("Transcript history append succeeded.");
   } catch (error) {
@@ -511,6 +564,33 @@ async function appendTranscriptHistory(videoUrl, transcriptText) {
       "error",
     );
     appendMessage("system", `Transcript history warning: ${error.message}.`);
+  }
+}
+
+async function appendTranscriptFailure(
+  videoUrl,
+  failureReason,
+  rawResponse = "",
+) {
+  if (!currentUser || !supabaseClient) {
+    return;
+  }
+
+  try {
+    await postBillingJson("/api/append-transcript-failure", {
+      videoUrl,
+      failureReason,
+      rawResponse,
+      video_url: videoUrl,
+      failure_reason: failureReason,
+      raw_response: rawResponse,
+    });
+  } catch (error) {
+    console.error("Transcript failure append failed:", error);
+    appendMessage(
+      "system",
+      `Transcript failure log warning: ${error.message}.`,
+    );
   }
 }
 
@@ -955,8 +1035,60 @@ async function loadTranscriptHistory() {
 
   setHistoryStatus("Loading transcript history...");
 
+  try {
+    const data = await postBillingJson("/api/get-transcript-history", {
+      limit: 200,
+    });
+
+    if (Array.isArray(data.rows)) {
+      renderHistoryList(data.rows);
+      const modeSuffix = data.queryMode ? ` (mode: ${data.queryMode})` : "";
+      setHistoryStatus(
+        `Loaded ${data.rows.length} history item(s) from transcript_history API${modeSuffix}.`,
+        "success",
+      );
+      return;
+    }
+  } catch (error) {
+    appendMessage(
+      "system",
+      `Transcript history API fallback: ${error.message}. Trying direct Supabase query.`,
+    );
+  }
+
   let data = null;
   let error = null;
+  let historySource = "transcript_history";
+
+  const historyTableAttempts = [
+    () =>
+      supabaseClient
+        .from("transcript_history")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: false }),
+    () =>
+      supabaseClient
+        .from("transcript_history")
+        .select("*")
+        .eq("userId", currentUser.id)
+        .order("created_at", { ascending: false }),
+    () =>
+      supabaseClient
+        .from("transcript_history")
+        .select("*")
+        .order("created_at", { ascending: false }),
+    () => supabaseClient.from("transcript_history").select("*"),
+  ];
+
+  for (const attempt of historyTableAttempts) {
+    const result = await attempt();
+    data = result.data;
+    error = result.error;
+    if (!error) {
+      break;
+    }
+  }
 
   const queryAttempts = [
     () =>
@@ -979,12 +1111,19 @@ async function loadTranscriptHistory() {
     () => supabaseClient.from("transcripts").select("*"),
   ];
 
-  for (const attempt of queryAttempts) {
-    const result = await attempt();
-    data = result.data;
-    error = result.error;
-    if (!error) {
-      break;
+  const transcriptHistoryMissing =
+    error &&
+    /transcript_history|does not exist|relation/i.test(error.message || "");
+
+  if (error && transcriptHistoryMissing) {
+    historySource = "transcripts";
+    for (const attempt of queryAttempts) {
+      const result = await attempt();
+      data = result.data;
+      error = result.error;
+      if (!error) {
+        break;
+      }
     }
   }
 
@@ -1009,7 +1148,14 @@ async function loadTranscriptHistory() {
   });
 
   renderHistoryList(filteredRows);
-  setHistoryStatus(`Loaded ${filteredRows.length} history item(s).`, "success");
+  const sourceSuffix =
+    historySource === "transcript_history"
+      ? "from transcript_history"
+      : "from transcripts fallback";
+  setHistoryStatus(
+    `Loaded ${filteredRows.length} history item(s) ${sourceSuffix}.`,
+    "success",
+  );
 }
 
 function isNoiseTranscriptLine(line) {
@@ -1090,6 +1236,27 @@ function extractTranscriptText(parsedBody, fallbackText) {
   }
 
   return extractReplyText(parsedBody, fallbackText);
+}
+
+function parseTranscriptFromResponseText(responseText) {
+  let transcriptText = responseText;
+
+  try {
+    const parsed = JSON.parse(responseText);
+    transcriptText = extractTranscriptText(parsed, responseText);
+  } catch {
+    const codeFencePayload = stripCodeFence(responseText);
+    const parsedFromCodeFence = parseJsonIfPossible(codeFencePayload);
+    if (parsedFromCodeFence) {
+      transcriptText = extractTranscriptText(
+        parsedFromCodeFence,
+        codeFencePayload,
+      );
+    }
+  }
+
+  const normalizedTranscriptText = normalizeTranscriptText(transcriptText);
+  return normalizedTranscriptText || (responseText || "").trim();
 }
 
 function normalizeTranscriptText(text) {
@@ -1424,37 +1591,47 @@ function initializeTranscriptFeature() {
         videoUrl: normalizedVideoUrl,
       };
 
-      const response = await fetch(TRANSCRIPT_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const fetchTranscriptResponse = async () => {
+        const candidates = getTranscriptWebhookCandidates();
+        let lastError = null;
 
-      const responseText = await response.text();
+        for (const url of candidates) {
+          try {
+            const response = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
 
-      if (!response.ok) {
-        throw new Error(
-          responseText || `Request failed with status ${response.status}`,
-        );
-      }
+            const responseText = await response.text();
+            if (!response.ok) {
+              throw new Error(
+                responseText || `Request failed with status ${response.status}`,
+              );
+            }
 
-      let transcriptText = responseText;
-      try {
-        const parsed = JSON.parse(responseText);
-        transcriptText = extractTranscriptText(parsed, responseText);
-      } catch {
-        const codeFencePayload = stripCodeFence(responseText);
-        const parsedFromCodeFence = parseJsonIfPossible(codeFencePayload);
-        if (parsedFromCodeFence) {
-          transcriptText = extractTranscriptText(
-            parsedFromCodeFence,
-            codeFencePayload,
-          );
+            return { responseText, url };
+          } catch (error) {
+            lastError = error;
+          }
         }
-      }
 
-      const normalizedTranscriptText = normalizeTranscriptText(transcriptText);
-      transcriptText = normalizedTranscriptText || (responseText || "").trim();
+        throw lastError || new Error("Transcript webhook request failed.");
+      };
+
+      let { responseText, url: responseUrl } = await fetchTranscriptResponse();
+      let transcriptText = parseTranscriptFromResponseText(responseText);
+
+      if (!transcriptText) {
+        setTranscriptStatus(
+          "Webhook returned empty text, retrying once...",
+          "error",
+        );
+        const retryResult = await fetchTranscriptResponse();
+        responseText = retryResult.responseText;
+        responseUrl = retryResult.url;
+        transcriptText = parseTranscriptFromResponseText(responseText);
+      }
 
       if (!transcriptText) {
         const emptyTranscriptMessage =
@@ -1465,6 +1642,15 @@ function initializeTranscriptFeature() {
           "error",
         );
         setTranscriptOutput(transcriptText);
+        appendMessage(
+          "system",
+          `Transcript webhook returned empty text from ${responseUrl}.`,
+        );
+        await appendTranscriptFailure(
+          normalizedVideoUrl,
+          emptyTranscriptMessage,
+          responseText,
+        );
         return;
       } else {
         setTranscriptStatus("Transcript fetched successfully.", "success");
@@ -1475,6 +1661,11 @@ function initializeTranscriptFeature() {
       await appendTranscriptHistory(normalizedVideoUrl, transcriptText);
       void loadTranscriptHistory();
     } catch (error) {
+      await appendTranscriptFailure(
+        normalizedVideoUrl || rawUrl || "unknown-video-url",
+        error.message,
+        "",
+      );
       setTranscriptStatus(`Transcript fetch failed: ${error.message}`, "error");
     } finally {
       transcriptSubmitButton.disabled = false;
