@@ -42,8 +42,8 @@ function buildBillingApiUrl(path) {
   return BILLING_API_BASE ? `${BILLING_API_BASE}${path}` : path;
 }
 
-function getTranscriptWebhookCandidates() {
-  const trimmed = (TRANSCRIPT_WEBHOOK_URL || "").trim();
+function getN8nWebhookCandidates(webhookUrl) {
+  const trimmed = (webhookUrl || "").trim();
   if (!trimmed) {
     return [];
   }
@@ -58,6 +58,10 @@ function getTranscriptWebhookCandidates() {
   }
 
   return Array.from(new Set(candidates));
+}
+
+function getTranscriptWebhookCandidates() {
+  return getN8nWebhookCandidates(TRANSCRIPT_WEBHOOK_URL);
 }
 
 const form = document.getElementById("upload-form");
@@ -1504,28 +1508,53 @@ function initializeUploadFeature() {
       }
 
       const metadata = createMetadataPayload(file);
-      const payloadJson = JSON.stringify(metadata);
-      const formData = new FormData();
-      formData.append("file", file, file.name);
-      formData.append("userId", metadata.userId);
-      formData.append("filename", metadata.filename);
-      formData.append("size", String(metadata.size));
-      formData.append("mimeType", metadata.mimeType);
-      formData.append("extension", metadata.extension);
-      formData.append("uploadedAt", metadata.uploadedAt);
-      formData.append("payloadJson", payloadJson);
+      const createUploadFormData = () => {
+        const payloadJson = JSON.stringify(metadata);
+        const formData = new FormData();
+        formData.append("file", file, file.name);
+        formData.append("userId", metadata.userId);
+        formData.append("filename", metadata.filename);
+        formData.append("size", String(metadata.size));
+        formData.append("mimeType", metadata.mimeType);
+        formData.append("extension", metadata.extension);
+        formData.append("uploadedAt", metadata.uploadedAt);
+        formData.append("payloadJson", payloadJson);
+        return formData;
+      };
 
-      const response = await fetch(UPLOAD_WEBHOOK_URL, {
-        method: "POST",
-        body: formData,
-      });
-
-      const responseText = await response.text();
-
-      if (!response.ok) {
+      const candidates = getN8nWebhookCandidates(UPLOAD_WEBHOOK_URL);
+      if (candidates.length === 0) {
         throw new Error(
-          responseText || `Upload failed with status ${response.status}`,
+          "Upload webhook is not configured. Set APP_CONFIG.uploadWebhookUrl in supabase-config.js.",
         );
+      }
+
+      let uploaded = false;
+      let lastError = null;
+
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            body: createUploadFormData(),
+          });
+
+          const responseText = await response.text();
+          if (!response.ok) {
+            throw new Error(
+              responseText || `Upload failed with status ${response.status}`,
+            );
+          }
+
+          uploaded = true;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!uploaded) {
+        throw lastError || new Error("Upload request failed.");
       }
 
       incrementUsage("uploads");
@@ -1719,18 +1748,41 @@ function initializeChatFeature() {
         userId: currentUser ? currentUser.id : DUMMY_USER_ID,
       };
 
-      const response = await fetch(CHAT_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const responseText = await response.text();
-
-      if (!response.ok) {
+      const candidates = getN8nWebhookCandidates(CHAT_WEBHOOK_URL);
+      if (candidates.length === 0) {
         throw new Error(
-          responseText || `Request failed with status ${response.status}`,
+          "Chat webhook is not configured. Set APP_CONFIG.chatWebhookUrl in supabase-config.js.",
         );
+      }
+
+      let responseText = "";
+      let lastError = null;
+      let completed = false;
+
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          responseText = await response.text();
+          if (!response.ok) {
+            throw new Error(
+              responseText || `Request failed with status ${response.status}`,
+            );
+          }
+
+          completed = true;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!completed) {
+        throw lastError || new Error("Chat request failed.");
       }
 
       let reply = responseText;
