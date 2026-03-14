@@ -1594,7 +1594,11 @@ function initializeTranscriptFeature() {
     try {
       const payload = {
         userId: currentUser.id,
+        user_id: currentUser.id,
+        email: currentUser.email || "",
         videoUrl: normalizedVideoUrl,
+        video_url: normalizedVideoUrl,
+        url: normalizedVideoUrl,
       };
 
       const fetchTranscriptResponse = async () => {
@@ -1650,7 +1654,7 @@ function initializeTranscriptFeature() {
           "Transcript was processed, but the webhook returned no transcript text.";
         transcriptText = emptyTranscriptMessage;
         setTranscriptStatus(
-          "Transcript request completed, but no transcript text was returned.",
+          `Transcript request completed, but no transcript text was returned by ${responseUrl}.`,
           "error",
         );
         setTranscriptOutput(transcriptText);
