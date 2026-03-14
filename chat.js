@@ -1,5 +1,5 @@
 const appConfig = window.APP_CONFIG || {};
-const isLocalHost =
+const isLocalHostForChat =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1";
 const CHAT_WEBHOOK_URL = (() => {
@@ -12,7 +12,7 @@ const CHAT_WEBHOOK_URL = (() => {
     return configuredUrl;
   }
 
-  return isLocalHost ? "http://localhost:5678/webhook/chat" : "";
+  return isLocalHostForChat ? "http://localhost:5678/webhook/chat" : "";
 })();
 const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");

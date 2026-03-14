@@ -1,5 +1,5 @@
 const appConfig = window.APP_CONFIG || {};
-const isLocalHost =
+const isLocalHostForApp =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1";
 
@@ -9,7 +9,7 @@ function getConfiguredUrl(value, localFallback = "") {
     return trimmed;
   }
 
-  return isLocalHost ? localFallback : "";
+  return isLocalHostForApp ? localFallback : "";
 }
 
 const UPLOAD_WEBHOOK_URL = getConfiguredUrl(
