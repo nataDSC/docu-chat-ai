@@ -7,6 +7,7 @@ Static frontend for uploads, chat, transcript extraction, transcript history, Su
 - Frontend: static HTML, CSS, and vanilla JS
 - Auth and data: Supabase
 - Billing API: local Node server for development or Netlify Functions for deployment
+- Youtube transcript extraction: rapidapi with its Youtube Transcript API
 - Workflows: n8n webhooks for upload, chat, and transcript extraction
 
 ## Local run
@@ -114,6 +115,23 @@ Subscribe it to at least:
 - Test upload, chat, and transcript actions against your hosted n8n webhooks
 - Reach the free limit and complete Stripe Checkout
 - Refresh and sign back in to confirm the Pro plan persists
+
+## Release checklist
+
+Run this checklist before each production deploy:
+
+- Sync n8n changes from local workflow(s) to cloud workflow(s)
+- Confirm each cloud workflow is Published/Active
+- Verify cloud webhook paths still match `APP_ENVIRONMENTS.deployed` in `supabase-config.js`
+- Confirm transcript flow uses create/upsert behavior for new users (not update-only path)
+- Redeploy Netlify from the latest GitHub commit
+- Run a quick smoke test with both a new user and an existing user
+
+Quick smoke test:
+
+- New user: sign up -> upload -> chat -> transcript -> history
+- Existing user: log in -> transcript again -> history shows multiple entries
+- Billing: upgrade flow -> return to app -> log out/in -> plan persists
 
 ## Supabase tables
 
