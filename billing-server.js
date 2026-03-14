@@ -708,7 +708,6 @@ const server = http.createServer(async (req, res) => {
 
       let data = null;
       let error = null;
-      let queryMode = "user_id";
 
       const attempts = [
         {
@@ -737,7 +736,6 @@ const server = http.createServer(async (req, res) => {
         const result = await attempt.run();
         data = result.data;
         error = result.error;
-        queryMode = attempt.mode;
         if (!error && Array.isArray(data) && data.length > 0) {
           break;
         }
@@ -758,12 +756,10 @@ const server = http.createServer(async (req, res) => {
       webhookLog("Transcript history fetched", {
         userId,
         rowCount: rows.length,
-        queryMode,
       });
 
       sendJson(res, 200, {
         source: "transcript_history",
-        queryMode,
         rows,
       });
     } catch (error) {

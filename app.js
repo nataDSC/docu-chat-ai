@@ -555,15 +555,12 @@ async function appendTranscriptHistory(videoUrl, transcriptText) {
       video_url: videoUrl,
       transcript: transcriptText,
     });
-
-    console.info("Transcript history append succeeded.");
   } catch (error) {
     console.error("Transcript history append failed:", error);
     setTranscriptStatus(
       `Transcript ready, but history could not be saved: ${error.message}`,
       "error",
     );
-    appendMessage("system", `Transcript history warning: ${error.message}.`);
   }
 }
 
@@ -587,10 +584,6 @@ async function appendTranscriptFailure(
     });
   } catch (error) {
     console.error("Transcript failure append failed:", error);
-    appendMessage(
-      "system",
-      `Transcript failure log warning: ${error.message}.`,
-    );
   }
 }
 
@@ -1049,10 +1042,7 @@ async function loadTranscriptHistory() {
       return;
     }
   } catch (error) {
-    appendMessage(
-      "system",
-      `History API unavailable: ${error.message}. Using direct database query.`,
-    );
+    console.warn("History API unavailable, using direct database query.", error);
   }
 
   let data = null;
