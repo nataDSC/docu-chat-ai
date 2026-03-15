@@ -34,6 +34,10 @@ const APP_ENVIRONMENTS = {
     chatWebhookUrl: "https://80dc-47-150-34-171.ngrok-free.app/webhook/chat",
     transcriptWebhookUrl:
       "https://80dc-47-150-34-171.ngrok-free.app/webhook/fetch",
+    // Optional tunnel fallback URLs (e.g., ngrok/cloudflared). Leave empty to disable.
+    uploadWebhookFallbackUrl: "",
+    chatWebhookFallbackUrl: "",
+    transcriptWebhookFallbackUrl: "",
     // Empty string means use same-origin Netlify Functions at /api/*.
     billingApiBaseUrl: "",
   },
@@ -55,6 +59,9 @@ window.APP_CONFIG = {
   uploadWebhookUrl: selectedAppConfig.uploadWebhookUrl,
   chatWebhookUrl: selectedAppConfig.chatWebhookUrl,
   transcriptWebhookUrl: selectedAppConfig.transcriptWebhookUrl,
+  uploadWebhookFallbackUrl: selectedAppConfig.uploadWebhookFallbackUrl,
+  chatWebhookFallbackUrl: selectedAppConfig.chatWebhookFallbackUrl,
+  transcriptWebhookFallbackUrl: selectedAppConfig.transcriptWebhookFallbackUrl,
 };
 
 window.BILLING_CONFIG = {

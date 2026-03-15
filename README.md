@@ -72,9 +72,33 @@ Edit `supabase-config.js` before deploying:
 - Set `APP_ENVIRONMENTS.deployed.uploadWebhookUrl` to your public n8n upload webhook
 - Set `APP_ENVIRONMENTS.deployed.chatWebhookUrl` to your public n8n chat webhook
 - Set `APP_ENVIRONMENTS.deployed.transcriptWebhookUrl` to your public n8n transcript webhook
+- Optional: set `APP_ENVIRONMENTS.deployed.*FallbackUrl` values for tunnel failover (ngrok/cloudflared)
 - Set `window.BILLING_CONFIG.proPriceId` to your Stripe recurring price id
 
 Leave `billingApiBaseUrl` empty for deployed mode. An empty value makes the frontend use same-origin Netlify Functions at `/api/*`.
+
+### Optional: tunnel failover mode
+
+If your primary cloud n8n endpoint is unavailable, the app can try tunnel URLs automatically.
+
+In `supabase-config.js` under `APP_ENVIRONMENTS.deployed`, set:
+
+- `uploadWebhookUrl`, `chatWebhookUrl`, `transcriptWebhookUrl`: primary cloud endpoints
+- `uploadWebhookFallbackUrl`, `chatWebhookFallbackUrl`, `transcriptWebhookFallbackUrl`: optional tunnel endpoints
+
+Example fallback values:
+
+```js
+uploadWebhookFallbackUrl: "https://your-tunnel-domain/webhook/upload",
+chatWebhookFallbackUrl: "https://your-tunnel-domain/webhook/chat",
+transcriptWebhookFallbackUrl: "https://your-tunnel-domain/webhook/fetch",
+```
+
+Runtime behavior:
+
+- App tries primary URL first
+- If it fails, app tries fallback URL
+- For each URL, app also auto-tries `/webhook/*` and `/webhook-test/*` variants
 
 ### 2) Add Netlify environment variables
 

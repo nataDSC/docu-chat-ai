@@ -16,15 +16,27 @@ const UPLOAD_WEBHOOK_URL = getConfiguredUrl(
   appConfig.uploadWebhookUrl,
   "http://localhost:5678/webhook/upload",
 );
+const UPLOAD_WEBHOOK_FALLBACK_URL = getConfiguredUrl(
+  appConfig.uploadWebhookFallbackUrl,
+  "",
+);
 
 const CHAT_WEBHOOK_URL = getConfiguredUrl(
   appConfig.chatWebhookUrl,
   "http://localhost:5678/webhook/chat",
 );
+const CHAT_WEBHOOK_FALLBACK_URL = getConfiguredUrl(
+  appConfig.chatWebhookFallbackUrl,
+  "",
+);
 
 const TRANSCRIPT_WEBHOOK_URL = getConfiguredUrl(
   appConfig.transcriptWebhookUrl,
   "http://localhost:5678/webhook/fetch",
+);
+const TRANSCRIPT_WEBHOOK_FALLBACK_URL = getConfiguredUrl(
+  appConfig.transcriptWebhookFallbackUrl,
+  "",
 );
 
 const ALLOWED_EXTENSIONS = ["txt", "pdf", "csv"];
@@ -60,8 +72,17 @@ function getN8nWebhookCandidates(webhookUrl) {
   return Array.from(new Set(candidates));
 }
 
+function getOrderedWebhookCandidates(primaryUrl, fallbackUrl = "") {
+  const primaryCandidates = getN8nWebhookCandidates(primaryUrl);
+  const fallbackCandidates = getN8nWebhookCandidates(fallbackUrl);
+  return Array.from(new Set([...primaryCandidates, ...fallbackCandidates]));
+}
+
 function getTranscriptWebhookCandidates() {
-  return getN8nWebhookCandidates(TRANSCRIPT_WEBHOOK_URL);
+  return getOrderedWebhookCandidates(
+    TRANSCRIPT_WEBHOOK_URL,
+    TRANSCRIPT_WEBHOOK_FALLBACK_URL,
+  );
 }
 
 const form = document.getElementById("upload-form");
@@ -1516,7 +1537,10 @@ function initializeUploadFeature() {
         return formData;
       };
 
-      const candidates = getN8nWebhookCandidates(UPLOAD_WEBHOOK_URL);
+      const candidates = getOrderedWebhookCandidates(
+        UPLOAD_WEBHOOK_URL,
+        UPLOAD_WEBHOOK_FALLBACK_URL,
+      );
       if (candidates.length === 0) {
         throw new Error(
           "Upload webhook is not configured. Set APP_CONFIG.uploadWebhookUrl in supabase-config.js.",
@@ -1746,7 +1770,10 @@ function initializeChatFeature() {
         userId: currentUser ? currentUser.id : DUMMY_USER_ID,
       };
 
-      const candidates = getN8nWebhookCandidates(CHAT_WEBHOOK_URL);
+      const candidates = getOrderedWebhookCandidates(
+        CHAT_WEBHOOK_URL,
+        CHAT_WEBHOOK_FALLBACK_URL,
+      );
       if (candidates.length === 0) {
         throw new Error(
           "Chat webhook is not configured. Set APP_CONFIG.chatWebhookUrl in supabase-config.js.",
