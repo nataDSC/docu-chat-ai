@@ -29,9 +29,11 @@ const APP_ENVIRONMENTS = {
   },
   deployed: {
     // Replace these with your public n8n webhook URLs before deploying.
-    uploadWebhookUrl: "https://maarseek.app.n8n.cloud/webhook/upload",
-    chatWebhookUrl: "https://maarseek.app.n8n.cloud/webhook/chat",
-    transcriptWebhookUrl: "https://maarseek.app.n8n.cloud/webhook/fetch",
+    uploadWebhookUrl:
+      "https://80dc-47-150-34-171.ngrok-free.app/webhook/upload",
+    chatWebhookUrl: "https://80dc-47-150-34-171.ngrok-free.app/webhook/chat",
+    transcriptWebhookUrl:
+      "https://80dc-47-150-34-171.ngrok-free.app/webhook/fetch",
     // Empty string means use same-origin Netlify Functions at /api/*.
     billingApiBaseUrl: "",
   },
