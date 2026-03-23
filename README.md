@@ -358,3 +358,5 @@ After configuring, open:
 
 - `http://localhost:8080/signup.html` to create account
 - `http://localhost:8080/login.html` to log in
+
+Link to the public deployment of the application: [ DocuChatAI ](https://aquamarine-beijinho-44b1d1.netlify.app/)
