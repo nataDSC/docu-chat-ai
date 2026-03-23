@@ -38,6 +38,7 @@ const TRANSCRIPT_WEBHOOK_FALLBACK_URL = getConfiguredUrl(
   appConfig.transcriptWebhookFallbackUrl,
   "",
 );
+const TRANSCRIPT_FEATURE_ENABLED = appConfig.transcriptEnabled !== false;
 
 const ALLOWED_EXTENSIONS = ["txt", "pdf", "csv"];
 const DUMMY_USER_ID = "userA1B2C3";
@@ -295,7 +296,15 @@ function applyUsageLockUI() {
   }
 
   if (transcriptSubmitButton) {
-    transcriptSubmitButton.disabled = false;
+    transcriptSubmitButton.disabled = !TRANSCRIPT_FEATURE_ENABLED;
+  }
+
+  if (videoUrlInput) {
+    videoUrlInput.disabled = !TRANSCRIPT_FEATURE_ENABLED;
+  }
+
+  if (copyTranscriptButton) {
+    copyTranscriptButton.disabled = !TRANSCRIPT_FEATURE_ENABLED;
   }
 
   if (chatInput) {
@@ -1587,6 +1596,28 @@ function initializeUploadFeature() {
 }
 
 function initializeTranscriptFeature() {
+  if (!TRANSCRIPT_FEATURE_ENABLED) {
+    if (transcriptSubmitButton) {
+      transcriptSubmitButton.disabled = true;
+      transcriptSubmitButton.textContent = "Transcript disabled";
+    }
+
+    if (videoUrlInput) {
+      videoUrlInput.disabled = true;
+      videoUrlInput.placeholder = "Transcript temporarily disabled";
+    }
+
+    if (copyTranscriptButton) {
+      copyTranscriptButton.disabled = true;
+    }
+
+    setTranscriptStatus(
+      "Transcript feature is temporarily disabled while API provider is being changed.",
+      "error",
+    );
+    return;
+  }
+
   transcriptForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 

@@ -57,6 +57,110 @@ For local Stripe webhook forwarding:
 stripe listen --forward-to localhost:4242/api/stripe-webhook
 ```
 
+## Free local transcript service (replace RapidAPI)
+
+If you hit RapidAPI limits, run a free local transcript service and point your local n8n transcript flow to it.
+
+### Option A: run with Python directly
+
+### 1) Start local transcript service
+
+Install Python dependencies:
+
+```bash
+python3 -m pip install -r requirements-transcript-service.txt
+```
+
+Run service:
+
+```bash
+python3 local_transcript_service.py --port 5055
+```
+
+Health check:
+
+```bash
+curl -s http://localhost:5055/health
+```
+
+### 2) Update n8n transcript workflow
+
+In your n8n transcript workflow, replace the RapidAPI call with an HTTP Request node:
+
+- Method: `POST`
+- URL (n8n running in Docker Desktop on Mac): `http://host.docker.internal:5055/transcript`
+- URL (n8n running directly on host): `http://localhost:5055/transcript`
+- Send Body: JSON
+- Body fields:
+	- `videoUrl`: `{{$json.videoUrl || $json.video_url || $json.url}}`
+	- Optional `languages`: `en,en-US`
+
+Expected response shape:
+
+```json
+{
+	"ok": true,
+	"videoId": "dQw4w9WgXcQ",
+	"transcript": "...",
+	"lineCount": 123,
+	"languagesRequested": ["en", "en-US"]
+}
+```
+
+Use `transcript` from the response as your downstream text output.
+
+### 3) Keep deployed app unchanged
+
+No frontend change is required. Your app still calls n8n webhook endpoints; only the n8n internal transcript step changes.
+
+### Option B (recommended): run transcript service in Docker
+
+This removes the need to keep a separate Python process running manually.
+
+Build and run transcript service container:
+
+```bash
+docker build -f Dockerfile.transcript-service -t local-transcript-service .
+docker run -d --name transcript-service -p 5055:5055 local-transcript-service
+```
+
+If your n8n is also running in Docker Desktop, keep the n8n HTTP Request URL as:
+
+- `http://host.docker.internal:5055/transcript`
+
+If you want Docker to manage both n8n and transcript service together, use:
+
+```bash
+docker compose -f docker-compose.local-ai.yml up -d --build
+```
+
+Then set the n8n HTTP Request URL to:
+
+- `http://transcript-service:5055/transcript`
+
+Stop stack:
+
+```bash
+docker compose -f docker-compose.local-ai.yml down
+```
+
+### Optional n8n fail-fast health check pattern
+
+To fail early with a clear message when transcript service is unavailable, add this step before your transcript request node:
+
+- Node: `HTTP Request`
+- Name: `Transcript Service Health`
+- Method: `GET`
+- URL (compose stack): `http://transcript-service:5055/health`
+- Response format: `JSON`
+- Continue On Fail: `false`
+
+Then connect:
+
+- `Transcript Service Health` -> `Fetch Transcript`
+
+If health check fails, n8n stops at that node and your webhook returns a clear upstream error instead of a vague empty transcript response.
+
 ## Netlify deploy
 
 This repo now includes:

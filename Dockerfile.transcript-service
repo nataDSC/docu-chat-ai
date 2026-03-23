@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements-transcript-service.txt /app/requirements-transcript-service.txt
+RUN pip install --no-cache-dir -r /app/requirements-transcript-service.txt
+
+COPY local_transcript_service.py /app/local_transcript_service.py
+
+EXPOSE 5055
+
+CMD ["python", "local_transcript_service.py", "--host", "0.0.0.0", "--port", "5055"]
