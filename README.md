@@ -92,18 +92,18 @@ In your n8n transcript workflow, replace the RapidAPI call with an HTTP Request 
 - URL (n8n running directly on host): `http://localhost:5055/transcript`
 - Send Body: JSON
 - Body fields:
-	- `videoUrl`: `{{$json.videoUrl || $json.video_url || $json.url}}`
-	- Optional `languages`: `en,en-US`
+  - `videoUrl`: `{{$json.videoUrl || $json.video_url || $json.url}}`
+  - Optional `languages`: `en,en-US`
 
 Expected response shape:
 
 ```json
 {
-	"ok": true,
-	"videoId": "dQw4w9WgXcQ",
-	"transcript": "...",
-	"lineCount": 123,
-	"languagesRequested": ["en", "en-US"]
+  "ok": true,
+  "videoId": "dQw4w9WgXcQ",
+  "transcript": "...",
+  "lineCount": 123,
+  "languagesRequested": ["en", "en-US"]
 }
 ```
 

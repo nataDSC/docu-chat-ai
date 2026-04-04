@@ -130,6 +130,20 @@ function extractReplyText(parsedBody, fallbackText) {
   return fallbackText;
 }
 
+function createN8nFormBody(payload) {
+  const formBody = new URLSearchParams();
+
+  Object.entries(payload || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+
+    formBody.append(key, String(value));
+  });
+
+  return formBody;
+}
+
 // ── Chat ───────────────────────────────────────────────────────────────────
 
 chatForm.addEventListener("submit", async (event) => {
@@ -159,8 +173,7 @@ chatForm.addEventListener("submit", async (event) => {
 
     const response = await fetch(CHAT_WEBHOOK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: createN8nFormBody(payload),
     });
 
     const responseText = await response.text();

@@ -25,7 +25,7 @@ const APP_ENVIRONMENTS = {
     uploadWebhookUrl: "http://localhost:5678/webhook/upload",
     chatWebhookUrl: "http://localhost:5678/webhook/chat",
     transcriptWebhookUrl: "http://localhost:5678/webhook/fetch",
-    transcriptEnabled: false,
+    transcriptEnabled: true,
     billingApiBaseUrl: "http://localhost:4242",
   },
   deployed: {
@@ -35,7 +35,7 @@ const APP_ENVIRONMENTS = {
     chatWebhookUrl: "https://80dc-47-150-34-171.ngrok-free.app/webhook/chat",
     transcriptWebhookUrl:
       "https://80dc-47-150-34-171.ngrok-free.app/webhook/fetch",
-    transcriptEnabled: false,
+    transcriptEnabled: true,
     // Optional tunnel fallback URLs (e.g., ngrok/cloudflared). Leave empty to disable.
     uploadWebhookFallbackUrl: "",
     chatWebhookFallbackUrl: "",

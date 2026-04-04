@@ -77,13 +77,30 @@ def normalize_languages(raw_value: object) -> list[str]:
     return cleaned or ["en", "en-US"]
 
 
-def transcript_to_text(items: Iterable[dict]) -> str:
+def transcript_to_text(items: Iterable[object]) -> str:
     lines = []
     for item in items:
-        text = str(item.get("text", "")).strip()
+        if isinstance(item, dict):
+            text = str(item.get("text", "")).strip()
+        else:
+            text = str(getattr(item, "text", "")).strip()
+
         if text:
             lines.append(text)
     return "\n".join(lines).strip()
+
+
+def fetch_transcript_items(video_id: str, languages: list[str]) -> list[object]:
+    if hasattr(YouTubeTranscriptApi, "get_transcript"):
+        return YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
+
+    api = YouTubeTranscriptApi()
+    fetched = api.fetch(video_id, languages=languages)
+
+    if hasattr(fetched, "to_raw_data"):
+        return fetched.to_raw_data()
+
+    return list(fetched)
 
 
 @app.get("/health")
@@ -114,7 +131,7 @@ def transcript() -> tuple[dict, int]:
     languages = normalize_languages(body.get("languages"))
 
     try:
-        result = YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
+        result = fetch_transcript_items(video_id, languages)
         text = transcript_to_text(result)
 
         if not text:

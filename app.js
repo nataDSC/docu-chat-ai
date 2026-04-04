@@ -39,6 +39,7 @@ const TRANSCRIPT_WEBHOOK_FALLBACK_URL = getConfiguredUrl(
   "",
 );
 const TRANSCRIPT_FEATURE_ENABLED = appConfig.transcriptEnabled !== false;
+console.log("Transcript feature enabled:", TRANSCRIPT_FEATURE_ENABLED);
 
 const ALLOWED_EXTENSIONS = ["txt", "pdf", "csv"];
 const DUMMY_USER_ID = "userA1B2C3";
@@ -77,6 +78,20 @@ function getOrderedWebhookCandidates(primaryUrl, fallbackUrl = "") {
   const primaryCandidates = getN8nWebhookCandidates(primaryUrl);
   const fallbackCandidates = getN8nWebhookCandidates(fallbackUrl);
   return Array.from(new Set([...primaryCandidates, ...fallbackCandidates]));
+}
+
+function createN8nFormBody(payload) {
+  const formBody = new URLSearchParams();
+
+  Object.entries(payload || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+
+    formBody.append(key, String(value));
+  });
+
+  return formBody;
 }
 
 function getTranscriptWebhookCandidates() {
@@ -1670,8 +1685,7 @@ function initializeTranscriptFeature() {
           try {
             const response = await fetch(url, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
+              body: createN8nFormBody(payload),
             });
 
             const responseText = await response.text();
@@ -1819,8 +1833,7 @@ function initializeChatFeature() {
         try {
           const response = await fetch(url, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: createN8nFormBody(payload),
           });
 
           responseText = await response.text();
