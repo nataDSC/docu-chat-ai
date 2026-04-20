@@ -1,5 +1,6 @@
 # DocuChat AI
 
+Link to the public deployment of the application: [ DocuChatAI ](https://aquamarine-beijinho-44b1d1.netlify.app/)
 Static frontend for uploads, chat, transcript extraction, transcript history, Supabase auth, and Stripe Pro upgrades.
 
 ## Architecture
