@@ -362,3 +362,9 @@ After configuring, open:
 - `http://localhost:8080/login.html` to log in
 
 Link to the public deployment of the application: [ DocuChatAI ](https://aquamarine-beijinho-44b1d1.netlify.app/)
+
+
+### n8n Workflows
+
+<img width="1284" height="1101" alt="n8n-workflow" src="https://github.com/user-attachments/assets/b3fe01dd-bac1-4c91-9fb6-393a4d2b4461" />
+
