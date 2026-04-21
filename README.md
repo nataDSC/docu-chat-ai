@@ -1,4 +1,4 @@
-Link to the public deployment of the application on Hugging Face: [ DocuChatAI ](https://aquamarine-beijinho-44b1d1.netlify.app/)
+Link to the public deployment of the application on Netlify: [ DocuChatAI ](https://aquamarine-beijinho-44b1d1.netlify.app/)
 
 # DocuChat AI
 
