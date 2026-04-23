@@ -29,12 +29,12 @@ const APP_ENVIRONMENTS = {
     billingApiBaseUrl: "http://localhost:4242",
   },
   deployed: {
-    // Replace these with your public n8n webhook URLs before deploying.
-    uploadWebhookUrl:
-      "https://80dc-47-150-34-171.ngrok-free.app/webhook/upload",
-    chatWebhookUrl: "https://80dc-47-150-34-171.ngrok-free.app/webhook/chat",
-    transcriptWebhookUrl:
-      "https://80dc-47-150-34-171.ngrok-free.app/webhook/fetch",
+    // Values are injected at build time from Netlify env vars via scripts/inject-env.js.
+    // Locally, set UPLOAD_WEBHOOK_URL / CHAT_WEBHOOK_URL / TRANSCRIPT_WEBHOOK_URL or
+    // edit the placeholder strings below directly (they are replaced before deploy).
+    uploadWebhookUrl: "__UPLOAD_WEBHOOK_URL__",
+    chatWebhookUrl: "__CHAT_WEBHOOK_URL__",
+    transcriptWebhookUrl: "__TRANSCRIPT_WEBHOOK_URL__",
     transcriptEnabled: true,
     // Optional tunnel fallback URLs (e.g., ngrok/cloudflared). Leave empty to disable.
     uploadWebhookFallbackUrl: "",
