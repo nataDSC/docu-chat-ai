@@ -34,7 +34,7 @@ if (missing.length > 0) {
   console.warn(
     "[inject-env] WARNING: the following env vars were not set — " +
       "their webhook URLs will be empty in the deployed build:\n  " +
-      missing.join("\n  ")
+      missing.join("\n  "),
   );
 } else {
   console.log("[inject-env] All webhook URLs injected successfully.");
